@@ -9,21 +9,36 @@ import { config } from "../config";
 
 const router = Router();
 
+const FEATURE_KEYS: Record<string, string> = {
+  analyze:   "analyzePrice",
+  outfit:    "outfitPrice",
+  hairstyle: "hairstylePrice",
+};
+
+const FEATURE_DESC: Record<string, string> = {
+  analyze:   "Beauty AI — нүүрний шинжилгээ",
+  outfit:    "Beauty AI — хувцасны зөвлөмж",
+  hairstyle: "Beauty AI — үс засал & грим",
+};
+
 router.post("/invoice", requireAuth, async (req: Request, res: Response) => {
   try {
     const user = await User.findById(req.userId);
     if (!user) { res.status(404).json({ error: "User not found" }); return; }
 
+    const feature = (req.body as { feature?: string }).feature ?? "analyze";
+    const priceKey = FEATURE_KEYS[feature] ?? "analyzePrice";
+
     const callbackUrl = config.appBaseUrl
       ? `${config.appBaseUrl}/payment/callback`
       : undefined;
 
-    const amount = await getSetting<number>("analyzePrice", config.qpay.amount);
+    const amount = await getSetting<number>(priceKey, config.qpay.amount);
 
     const invoice = await createInvoice({
       invoiceNo:   randomUUID(),
       amount,
-      description: "Beauty AI — нүүрний шинжилгээ",
+      description: FEATURE_DESC[feature] ?? "Beauty AI",
       callbackUrl,
     });
 
@@ -33,7 +48,7 @@ router.post("/invoice", requireAuth, async (req: Request, res: Response) => {
       invoiceId: invoice.invoice_id,
       amount,
       status:    "pending",
-      type:      "analyze",
+      type:      feature,
     });
 
     res.json({

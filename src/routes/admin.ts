@@ -76,18 +76,35 @@ router.get("/usage", requireAdmin, async (req: Request, res: Response) => {
 });
 
 router.get("/settings", requireAdmin, async (_req: Request, res: Response) => {
-  const analyzePrice = await getSetting<number>("analyzePrice", config.qpay.amount);
-  res.json({ analyzePrice });
+  const [analyzePrice, outfitPrice, hairstylePrice] = await Promise.all([
+    getSetting<number>("analyzePrice",   config.qpay.amount),
+    getSetting<number>("outfitPrice",    config.qpay.amount),
+    getSetting<number>("hairstylePrice", config.qpay.amount),
+  ]);
+  res.json({ analyzePrice, outfitPrice, hairstylePrice });
 });
 
 router.put("/settings", requireAdmin, async (req: Request, res: Response) => {
-  const { analyzePrice } = req.body as { analyzePrice?: number };
-  if (analyzePrice === undefined || typeof analyzePrice !== "number" || analyzePrice < 100) {
-    res.status(400).json({ error: "analyzePrice хамгийн багадаа 100₮ байх ёстой" });
-    return;
+  const body = req.body as { analyzePrice?: number; outfitPrice?: number; hairstylePrice?: number };
+  const updates: Promise<void>[] = [];
+
+  for (const [key, val] of Object.entries(body)) {
+    if (!["analyzePrice", "outfitPrice", "hairstylePrice"].includes(key)) continue;
+    if (typeof val !== "number" || val < 100) {
+      res.status(400).json({ error: `${key} хамгийн багадаа 100₮ байх ёстой` });
+      return;
+    }
+    updates.push(setSetting(key, val));
   }
-  await setSetting("analyzePrice", analyzePrice);
-  res.json({ analyzePrice });
+
+  await Promise.all(updates);
+
+  const [analyzePrice, outfitPrice, hairstylePrice] = await Promise.all([
+    getSetting<number>("analyzePrice",   config.qpay.amount),
+    getSetting<number>("outfitPrice",    config.qpay.amount),
+    getSetting<number>("hairstylePrice", config.qpay.amount),
+  ]);
+  res.json({ analyzePrice, outfitPrice, hairstylePrice });
 });
 
 router.get("/users", requireAdmin, async (req: Request, res: Response) => {

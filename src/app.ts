@@ -1,8 +1,10 @@
 import express from "express";
 import cors from "cors";
 import authRouter    from "./routes/auth";
-import analyzeRouter from "./routes/analyze";
-import paymentRouter from "./routes/payment";
+import analyzeRouter   from "./routes/analyze";
+import outfitRouter    from "./routes/outfit";
+import hairstyleRouter from "./routes/hairstyle";
+import paymentRouter   from "./routes/payment";
 import adminRouter   from "./routes/admin";
 import usageRouter   from "./routes/usage";
 
@@ -23,8 +25,10 @@ app.use(cors({
 app.use(express.json({ limit: "10mb" }));
 
 app.use("/auth",    authRouter);
-app.use("/analyze", analyzeRouter);
-app.use("/payment", paymentRouter);
+app.use("/analyze",   analyzeRouter);
+app.use("/outfit",    outfitRouter);
+app.use("/hairstyle", hairstyleRouter);
+app.use("/payment",   paymentRouter);
 app.use("/admin",   adminRouter);
 app.use("/usage",   usageRouter);
 
