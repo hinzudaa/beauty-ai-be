@@ -107,14 +107,10 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
     const hair   = JSON.parse(hc) as Record<string, unknown>;
     const outfit = JSON.parse(oc) as { outfits?: unknown[] };
 
-    // Mark free trial used or increment monthly subscription usage (once per session)
+    // Increment subscription monthly usage (once per session)
     const user = await User.findById(req.userId);
     if (user) {
-      if (req.isFreeTrial) {
-        await User.findByIdAndUpdate(req.userId, { freeTrialUsed: true });
-      } else {
-        await User.findByIdAndUpdate(req.userId, { $inc: { "subscription.monthlyUsage": 1 } });
-      }
+      await User.findByIdAndUpdate(req.userId, { $inc: { "subscription.monthlyUsage": 1 } });
       UsageLog.create({ userId: user._id, phone: user.phone, feature: "full" }).catch(() => {});
     }
 

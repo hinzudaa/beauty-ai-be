@@ -21,7 +21,6 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     res.status(401).json({ error: "Missing or malformed Authorization header" });
     return;
   }
-
   const token = header.slice(7);
   try {
     const payload = jwt.verify(token, config.jwt.secret) as AuthPayload;
@@ -43,7 +42,7 @@ export async function requireVerifiedPhone(
   next();
 }
 
-/** Gate AI features behind free trial OR active subscription */
+/** Require an active subscription — no free trial */
 export async function requireAccess(
   req: Request,
   res: Response,
@@ -54,26 +53,15 @@ export async function requireAccess(
   const user = await User.findById(req.userId);
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
 
-  // Free trial: first-ever AI feature use
-  if (!user.freeTrialUsed) {
-    req.isFreeTrial = true;
-    return next();
-  }
-
   const sub = user.subscription;
   const now = new Date();
 
-  // No subscription or expired
   if (!sub || sub.status !== "active" || sub.expiresAt < now) {
-    res.status(402).json({
-      error: "needsSubscription",
-      message: "Сар бүрийн захиалга шаардлагатай",
-      freeTrialUsed: true,
-    });
+    res.status(402).json({ error: "needsSubscription", message: "Сар бүрийн захиалга шаардлагатай" });
     return;
   }
 
-  // Auto-reset monthly counter when period rolls over
+  // Auto-reset monthly counter when the 30-day period rolls over
   if (now >= sub.usageResetAt) {
     const nextReset = new Date(sub.usageResetAt.getTime() + 30 * 24 * 60 * 60 * 1000);
     await User.findByIdAndUpdate(req.userId, {
@@ -83,20 +71,16 @@ export async function requireAccess(
     sub.monthlyUsage = 0;
   }
 
-  // Monthly usage limit
   const limit = sub.plan === "pro" ? 40 : 20;
   if (sub.monthlyUsage >= limit) {
     res.status(402).json({
       error: "usageLimitReached",
       message: `Сарын ${limit} ашиглалтын хязгаарт хүрлээ`,
-      plan: sub.plan,
-      limit,
-      used: sub.monthlyUsage,
+      plan: sub.plan, limit, used: sub.monthlyUsage,
     });
     return;
   }
 
-  req.isFreeTrial = false;
   next();
 }
 
@@ -115,10 +99,7 @@ export async function requirePro(
   const now = new Date();
 
   if (!sub || sub.plan !== "pro" || sub.status !== "active" || sub.expiresAt < now) {
-    res.status(402).json({
-      error: "proRequired",
-      message: "Энэ боломж Pro захиалгад зориулагдсан",
-    });
+    res.status(402).json({ error: "proRequired", message: "Энэ боломж Pro захиалгад зориулагдсан" });
     return;
   }
 

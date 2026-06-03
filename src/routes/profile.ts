@@ -29,7 +29,6 @@ router.get("/", requireAuth, async (req: Request, res: Response) => {
       id:            user._id,
       phone:         user.phone,
       phoneVerified: user.phoneVerified,
-      freeTrialUsed: user.freeTrialUsed,
       createdAt:     user.createdAt,
     },
     subscription: sub ? {
