@@ -1,7 +1,6 @@
 import express from "express";
 import cors from "cors";
 import authRouter from "./routes/auth";
-import verifyRouter from "./routes/verify";
 
 const app = express();
 
@@ -23,8 +22,7 @@ app.use(cors({
 app.use(express.json());
 
 // ── Routes ─────────────────────────────────────────────────────────────────────
-app.use("/auth",   authRouter);
-app.use("/verify", verifyRouter);
+app.use("/auth", authRouter);
 
 // Health check
 app.get("/health", (_req, res) => {
