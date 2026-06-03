@@ -18,7 +18,7 @@ router.get("/", requireAuth, async (req: Request, res: Response) => {
     ]),
   ]);
 
-  const usage: Record<string, number> = { analyze: 0, outfit: 0, hairstyle: 0 };
+  const usage: Record<string, number> = { full: 0 };
   for (const u of usageAgg) { if (u._id) usage[u._id as string] = u.count as number; }
 
   const sub = user.subscription;
