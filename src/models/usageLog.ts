@@ -1,6 +1,6 @@
 import mongoose, { Document, Schema, Model } from "mongoose";
 
-export type Feature = "analyze" | "outfit" | "hairstyle";
+export type Feature = "analyze" | "outfit" | "hairstyle" | "full";
 
 export interface IUsageLog {
   userId: mongoose.Types.ObjectId;
@@ -15,7 +15,7 @@ const usageLogSchema = new Schema<IUsageLogDocument>(
   {
     userId:  { type: Schema.Types.ObjectId, ref: "User", required: true },
     phone:   { type: String, required: true },
-    feature: { type: String, enum: ["analyze", "outfit", "hairstyle"], required: true },
+    feature: { type: String, enum: ["analyze", "outfit", "hairstyle", "full"], required: true },
   },
   { timestamps: { createdAt: "createdAt", updatedAt: false } }
 );

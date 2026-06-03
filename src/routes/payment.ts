@@ -5,20 +5,17 @@ import { createInvoice, checkPayment } from "../services/qpay";
 import { Payment } from "../models/payment";
 import { User } from "../models/user";
 import { getSetting } from "../models/settings";
-import { config } from "../config";
 
 const router = Router();
 
-const FEATURE_KEYS: Record<string, string> = {
-  analyze:   "analyzePrice",
-  outfit:    "outfitPrice",
-  hairstyle: "hairstylePrice",
+const PLAN_DEFAULTS: Record<string, number> = {
+  basicPrice: 19999,
+  proPrice:   29999,
 };
 
-const FEATURE_DESC: Record<string, string> = {
-  analyze:   "Beauty AI — нүүрний шинжилгээ",
-  outfit:    "Beauty AI — хувцасны зөвлөмж",
-  hairstyle: "Beauty AI — үс засал & грим",
+const PLAN_DESC: Record<string, string> = {
+  basic: "Looka Beauty AI — Basic захиалга (сард 20 ашиглалт)",
+  pro:   "Looka Beauty AI — Pro захиалга (сард 40 ашиглалт + AI Стилист)",
 };
 
 router.post("/invoice", requireAuth, async (req: Request, res: Response) => {
@@ -26,19 +23,20 @@ router.post("/invoice", requireAuth, async (req: Request, res: Response) => {
     const user = await User.findById(req.userId);
     if (!user) { res.status(404).json({ error: "User not found" }); return; }
 
-    const feature = (req.body as { feature?: string }).feature ?? "analyze";
-    const priceKey = FEATURE_KEYS[feature] ?? "analyzePrice";
+    const plan = (req.body as { feature?: string }).feature as "basic" | "pro";
+    if (plan !== "basic" && plan !== "pro") {
+      res.status(400).json({ error: "feature нь 'basic' эсвэл 'pro' байх ёстой" });
+      return;
+    }
 
-    const callbackUrl = config.appBaseUrl
-      ? `${config.appBaseUrl}/payment/callback`
-      : undefined;
-
-    const amount = await getSetting<number>(priceKey, config.qpay.amount);
+    const priceKey    = plan === "basic" ? "basicPrice" : "proPrice";
+    const callbackUrl = process.env.APP_BASE_URL ? `${process.env.APP_BASE_URL}/payment/callback` : undefined;
+    const amount      = await getSetting<number>(priceKey, PLAN_DEFAULTS[priceKey]);
 
     const invoice = await createInvoice({
       invoiceNo:   randomUUID(),
       amount,
-      description: FEATURE_DESC[feature] ?? "Beauty AI",
+      description: PLAN_DESC[plan],
       callbackUrl,
     });
 
@@ -48,7 +46,7 @@ router.post("/invoice", requireAuth, async (req: Request, res: Response) => {
       invoiceId: invoice.invoice_id,
       amount,
       status:    "pending",
-      type:      feature,
+      type:      plan,
     });
 
     res.json({
@@ -57,7 +55,7 @@ router.post("/invoice", requireAuth, async (req: Request, res: Response) => {
       qrText:     invoice.qr_text,
       paymentUrl: invoice.payment_url,
       urls:       invoice.urls ?? [],
-      amount:     config.qpay.amount,
+      amount,
     });
   } catch (err) {
     console.error("[payment] create invoice error:", err instanceof Error ? err.message : err);
@@ -68,13 +66,38 @@ router.post("/invoice", requireAuth, async (req: Request, res: Response) => {
 router.get("/check/:invoiceId", requireAuth, async (req: Request, res: Response) => {
   try {
     const invoiceId = String(req.params.invoiceId);
-    const result = await checkPayment(invoiceId);
+    const result    = await checkPayment(invoiceId);
 
     if (result.paid) {
-      await Payment.findOneAndUpdate(
+      const payment = await Payment.findOneAndUpdate(
         { invoiceId },
-        { status: "paid", paidAt: new Date() }
+        { status: "paid", paidAt: new Date() },
+        { new: true }
       );
+
+      // Activate or extend subscription when a plan invoice is confirmed
+      if (payment && (payment.type === "basic" || payment.type === "pro")) {
+        const now        = new Date();
+        const MS_30_DAYS = 30 * 24 * 60 * 60 * 1000;
+
+        const existingUser = await User.findById(payment.userId);
+        const existingSub  = existingUser?.subscription;
+        const startFrom    =
+          existingSub?.status === "active" && existingSub.expiresAt > now
+            ? existingSub.expiresAt   // extend from current expiry if still active
+            : now;
+
+        await User.findByIdAndUpdate(payment.userId, {
+          subscription: {
+            plan:         payment.type,
+            status:       "active",
+            startedAt:    now,
+            expiresAt:    new Date(startFrom.getTime() + MS_30_DAYS),
+            monthlyUsage: 0,
+            usageResetAt: new Date(now.getTime() + MS_30_DAYS),
+          },
+        });
+      }
     }
 
     res.json(result);
@@ -84,7 +107,7 @@ router.get("/check/:invoiceId", requireAuth, async (req: Request, res: Response)
   }
 });
 
-router.post("/callback", (req: Request, res: Response) => {
+router.post("/callback", (_req: Request, res: Response) => {
   res.sendStatus(200);
 });
 

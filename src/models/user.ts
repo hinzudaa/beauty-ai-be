@@ -1,17 +1,42 @@
 import mongoose, { Document, Schema, Model } from "mongoose";
 
+export interface ISubscription {
+  plan: "basic" | "pro";
+  status: "active" | "expired";
+  startedAt: Date;
+  expiresAt: Date;
+  monthlyUsage: number;
+  usageResetAt: Date;
+}
+
 export interface IUser {
-  phone: string;          // digits only, 8–16 chars
+  phone: string;
   phoneVerified: boolean;
+  freeTrialUsed: boolean;
+  subscription?: ISubscription;
   createdAt: Date;
 }
 
 export interface IUserDocument extends IUser, Document {}
 
+const subscriptionSchema = new Schema<ISubscription>(
+  {
+    plan:         { type: String, enum: ["basic", "pro"], required: true },
+    status:       { type: String, enum: ["active", "expired"], default: "active" },
+    startedAt:    { type: Date, required: true },
+    expiresAt:    { type: Date, required: true },
+    monthlyUsage: { type: Number, default: 0 },
+    usageResetAt: { type: Date, required: true },
+  },
+  { _id: false }
+);
+
 const userSchema = new Schema<IUserDocument>(
   {
     phone:         { type: String, required: true, unique: true, match: /^\d{8,16}$/ },
-    phoneVerified: { type: Boolean, default: true }, // always true — verified on creation
+    phoneVerified: { type: Boolean, default: true },
+    freeTrialUsed: { type: Boolean, default: false },
+    subscription:  { type: subscriptionSchema },
   },
   { timestamps: { createdAt: "createdAt", updatedAt: false } }
 );
