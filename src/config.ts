@@ -27,4 +27,10 @@ export const config = {
   openai: {
     apiKey: required("OPENAI_API_KEY"),
   },
+  qpay: {
+    username:    required("QPAY_USERNAME"),
+    password:    required("QPAY_PASSWORD"),
+    invoiceCode: required("QPAY_INVOICE_CODE"),
+    amount:      parseInt(process.env.QPAY_AMOUNT ?? "1000", 10),
+  },
 };
