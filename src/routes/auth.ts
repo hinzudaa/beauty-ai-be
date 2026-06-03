@@ -1,10 +1,11 @@
+import { randomUUID } from "crypto";
 import { Router, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { config } from "../config";
 import { User } from "../models/user";
 import { OtpSession } from "../models/otpSession";
 import { requireAuth } from "../middleware/auth";
-import { createSession, checkSession, registerCallbackSession, HttpError } from "../services/verifyMn";
+import { createSession, checkSession, HttpError } from "../services/verifyMn";
 
 const router = Router();
 
@@ -22,6 +23,17 @@ function userPayload(user: { _id: unknown; phone: string; phoneVerified: boolean
   return { id: user._id, phone: user.phone, phoneVerified: user.phoneVerified };
 }
 
+async function findOrCreateUser(phone: string) {
+  let user = await User.findOne({ phone });
+  if (!user) {
+    user = await User.create({ phone, phoneVerified: true });
+  } else if (!user.phoneVerified) {
+    user.phoneVerified = true;
+    await user.save();
+  }
+  return user;
+}
+
 router.post("/start", async (req: Request, res: Response) => {
   const { phone } = req.body as { phone?: string };
 
@@ -31,50 +43,54 @@ router.post("/start", async (req: Request, res: Response) => {
   }
 
   if (config.verifyMn.devBypass) {
-    const fakeId = `dev_${Date.now()}`;
-    const expires = new Date(Date.now() + 300_000).toISOString();
+    const callbackToken = randomUUID();
+    const fakeId        = `dev_${Date.now()}`;
+    const expires       = new Date(Date.now() + 300_000).toISOString();
     await OtpSession.findOneAndUpdate(
       { phone },
-      { sessionId: fakeId, phone, expiresAt: new Date(expires) },
+      { sessionId: fakeId, phone, expiresAt: new Date(expires), callbackToken, verified: false },
       { upsert: true, returnDocument: "after" }
     );
     return res.json({
-      sessionId: fakeId,
-      smsUri: `sms:144773?body=000000`,
-      displayInstruction: `[DEV MODE] Код шаардлагагүй — 3 секундын дараа автоматаар баталгаажна.`,
-      expiresAt: expires,
+      sessionId:          fakeId,
+      smsUri:             "sms:144773?body=000000",
+      displayInstruction: "[DEV MODE] Код шаардлагагүй — 3 секундын дараа автоматаар баталгаажна.",
+      expiresAt:          expires,
     });
   }
 
   try {
-    const session = await createSession(phone);
+    const callbackToken = randomUUID();
+    const callbackUrl   = config.appBaseUrl
+      ? `${config.appBaseUrl}/verify/callback/${callbackToken}`
+      : undefined;
+
+    const session = await createSession(phone, callbackUrl);
 
     await OtpSession.findOneAndUpdate(
       { phone },
-      { sessionId: session.sessionId, phone, expiresAt: new Date(session.expiresAt) },
+      {
+        sessionId:     session.sessionId,
+        phone,
+        expiresAt:     new Date(session.expiresAt),
+        callbackToken,
+        verified:      false,
+      },
       { upsert: true, returnDocument: "after" }
     );
 
-    if (config.appBaseUrl) {
-      const callbackUrl = `${config.appBaseUrl}/verify/callback/${encodeURIComponent(session.sessionId)}`;
-      void callbackUrl;
-      registerCallbackSession(session.sessionId, session.expiresAt, async (verified) => {
-        if (verified) await User.findOneAndUpdate({ phone }, { phoneVerified: true });
-      });
-    }
-
     res.json({
-      sessionId: session.sessionId,
-      smsUri: session.smsUri,
+      sessionId:          session.sessionId,
+      smsUri:             session.smsUri,
       displayInstruction: session.displayInstruction,
-      expiresAt: session.expiresAt,
+      expiresAt:          session.expiresAt,
     });
   } catch (err: unknown) {
     if (err instanceof HttpError && err.statusCode === 401) {
       res.status(401).json({ error: err.message });
       return;
     }
-    const status = (err as { statusCode?: number }).statusCode ?? 500;
+    const status  = (err as { statusCode?: number }).statusCode ?? 500;
     const message = err instanceof Error ? err.message : "Алдаа гарлаа";
     res.status(status).json({ error: message });
   }
@@ -101,8 +117,14 @@ router.post("/verify", async (req: Request, res: Response) => {
 
   if (config.verifyMn.devBypass && sessionId.startsWith("dev_")) {
     await OtpSession.deleteOne({ sessionId });
-    let user = await User.findOne({ phone: stored.phone });
-    if (!user) user = await User.create({ phone: stored.phone, phoneVerified: true });
+    const user  = await findOrCreateUser(stored.phone);
+    const token = signToken(String(user._id));
+    return res.json({ token, user: userPayload(user) });
+  }
+
+  if (stored.verified) {
+    await OtpSession.deleteOne({ sessionId });
+    const user  = await findOrCreateUser(stored.phone);
     const token = signToken(String(user._id));
     return res.json({ token, user: userPayload(user) });
   }
@@ -122,15 +144,7 @@ router.post("/verify", async (req: Request, res: Response) => {
     }
 
     await OtpSession.deleteOne({ sessionId });
-
-    let user = await User.findOne({ phone: stored.phone });
-    if (!user) {
-      user = await User.create({ phone: stored.phone, phoneVerified: true });
-    } else if (!user.phoneVerified) {
-      user.phoneVerified = true;
-      await user.save();
-    }
-
+    const user  = await findOrCreateUser(stored.phone);
     const token = signToken(String(user._id));
     res.json({ token, user: userPayload(user) });
   } catch (err: unknown) {
@@ -141,6 +155,27 @@ router.post("/verify", async (req: Request, res: Response) => {
     console.error("[verify] checkSession error:", err instanceof Error ? err.message : err);
     res.status(202).json({ status: "PENDING" });
   }
+});
+
+router.get("/callback/:callbackToken", async (req: Request, res: Response) => {
+  res.sendStatus(200);
+
+  setImmediate(async () => {
+    try {
+      const stored = await OtpSession.findOne({ callbackToken: req.params.callbackToken });
+      if (!stored || stored.verified) return;
+
+      const status = await checkSession(stored.sessionId);
+      if (status.sessionStatus === "VERIFIED") {
+        await OtpSession.findOneAndUpdate(
+          { sessionId: stored.sessionId },
+          { verified: true }
+        );
+      }
+    } catch (err) {
+      console.error("[callback] error:", err instanceof Error ? err.message : err);
+    }
+  });
 });
 
 router.get("/me", requireAuth, async (req: Request, res: Response) => {
