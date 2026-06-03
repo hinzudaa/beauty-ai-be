@@ -7,6 +7,7 @@ import hairstyleRouter from "./routes/hairstyle";
 import paymentRouter   from "./routes/payment";
 import adminRouter   from "./routes/admin";
 import usageRouter   from "./routes/usage";
+import profileRouter from "./routes/profile";
 
 const app = express();
 
@@ -31,6 +32,7 @@ app.use("/hairstyle", hairstyleRouter);
 app.use("/payment",   paymentRouter);
 app.use("/admin",   adminRouter);
 app.use("/usage",   usageRouter);
+app.use("/profile", profileRouter);
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 
