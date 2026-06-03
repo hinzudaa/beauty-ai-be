@@ -1,6 +1,7 @@
-import express from "express";
+import express, { Request, Response } from "express";
 import cors from "cors";
 import authRouter from "./routes/auth";
+import { handleCallback } from "./services/verifyMn";
 
 const app = express();
 
@@ -23,6 +24,13 @@ app.use(express.json());
 
 // ── Routes ─────────────────────────────────────────────────────────────────────
 app.use("/auth", authRouter);
+
+app.get("/verify/callback/:sessionId", (req: Request, res: Response) => {
+  res.sendStatus(200);
+  handleCallback(String(req.params.sessionId)).catch((err) => {
+    console.error("[callback] error:", err);
+  });
+});
 
 // Health check
 app.get("/health", (_req, res) => {
