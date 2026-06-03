@@ -24,4 +24,7 @@ export const config = {
     devBypass: process.env.VERIFY_MN_DEV_BYPASS === "true",
   },
   appBaseUrl: process.env.APP_BASE_URL ?? "",
+  openai: {
+    apiKey: required("OPENAI_API_KEY"),
+  },
 };

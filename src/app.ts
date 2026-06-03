@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
-import authRouter from "./routes/auth";
+import authRouter    from "./routes/auth";
+import analyzeRouter from "./routes/analyze";
 
 const app = express();
 
@@ -16,9 +17,10 @@ app.use(cors({
   credentials: true,
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 
-app.use("/auth", authRouter);
+app.use("/auth",    authRouter);
+app.use("/analyze", analyzeRouter);
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 
