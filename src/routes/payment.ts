@@ -2,26 +2,43 @@ import { Router, Request, Response } from "express";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../middleware/auth";
 import { createInvoice, checkPayment } from "../services/qpay";
+import { Payment } from "../models/payment";
+import { User } from "../models/user";
+import { getSetting } from "../models/settings";
 import { config } from "../config";
 
 const router = Router();
 
 router.post("/invoice", requireAuth, async (req: Request, res: Response) => {
   try {
+    const user = await User.findById(req.userId);
+    if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
     const callbackUrl = config.appBaseUrl
       ? `${config.appBaseUrl}/payment/callback`
       : undefined;
 
+    const amount = await getSetting<number>("analyzePrice", config.qpay.amount);
+
     const invoice = await createInvoice({
       invoiceNo:   randomUUID(),
-      amount:      config.qpay.amount,
+      amount,
       description: "Beauty AI — нүүрний шинжилгээ",
       callbackUrl,
     });
 
+    await Payment.create({
+      userId:    user._id,
+      phone:     user.phone,
+      invoiceId: invoice.invoice_id,
+      amount,
+      status:    "pending",
+      type:      "analyze",
+    });
+
     res.json({
       invoiceId:  invoice.invoice_id,
-      qrImage:    invoice.qr_image,   // raw base64, no data: prefix
+      qrImage:    invoice.qr_image,
       qrText:     invoice.qr_text,
       paymentUrl: invoice.payment_url,
       urls:       invoice.urls ?? [],
@@ -35,7 +52,16 @@ router.post("/invoice", requireAuth, async (req: Request, res: Response) => {
 
 router.get("/check/:invoiceId", requireAuth, async (req: Request, res: Response) => {
   try {
-    const result = await checkPayment(String(req.params.invoiceId));
+    const invoiceId = String(req.params.invoiceId);
+    const result = await checkPayment(invoiceId);
+
+    if (result.paid) {
+      await Payment.findOneAndUpdate(
+        { invoiceId },
+        { status: "paid", paidAt: new Date() }
+      );
+    }
+
     res.json(result);
   } catch (err) {
     console.error("[payment] check error:", err instanceof Error ? err.message : err);

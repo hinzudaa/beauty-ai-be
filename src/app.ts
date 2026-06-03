@@ -3,6 +3,8 @@ import cors from "cors";
 import authRouter    from "./routes/auth";
 import analyzeRouter from "./routes/analyze";
 import paymentRouter from "./routes/payment";
+import adminRouter   from "./routes/admin";
+import usageRouter   from "./routes/usage";
 
 const app = express();
 
@@ -23,6 +25,8 @@ app.use(express.json({ limit: "10mb" }));
 app.use("/auth",    authRouter);
 app.use("/analyze", analyzeRouter);
 app.use("/payment", paymentRouter);
+app.use("/admin",   adminRouter);
+app.use("/usage",   usageRouter);
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 

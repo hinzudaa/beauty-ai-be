@@ -27,6 +27,10 @@ export const config = {
   openai: {
     apiKey: required("OPENAI_API_KEY"),
   },
+  admin: {
+    username: process.env.ADMIN_USERNAME ?? "admin",
+    password: required("ADMIN_PASSWORD"),
+  },
   qpay: {
     username:    required("QPAY_USERNAME"),
     password:    required("QPAY_PASSWORD"),

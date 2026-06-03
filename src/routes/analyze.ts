@@ -2,6 +2,8 @@ import { Router, Request, Response } from "express";
 import OpenAI from "openai";
 import { config } from "../config";
 import { requireAuth } from "../middleware/auth";
+import { User } from "../models/user";
+import { UsageLog } from "../models/usageLog";
 
 const router = Router();
 const openai = new OpenAI({ apiKey: config.openai.apiKey });
@@ -80,6 +82,11 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
     ) {
       res.status(500).json({ error: "AI буруу форматаар хариулсан" });
       return;
+    }
+
+    const user = await User.findById(req.userId).lean();
+    if (user) {
+      UsageLog.create({ userId: user._id, phone: user.phone, feature: "analyze" }).catch(() => {});
     }
 
     res.json(result);
