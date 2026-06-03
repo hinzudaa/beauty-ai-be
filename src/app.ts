@@ -6,6 +6,7 @@ import paymentRouter from "./routes/payment";
 import adminRouter   from "./routes/admin";
 import profileRouter from "./routes/profile";
 import chatRouter    from "./routes/chat";
+import pricesRouter  from "./routes/prices";
 
 const app = express();
 
@@ -29,6 +30,7 @@ app.use("/payment", paymentRouter);
 app.use("/admin",   adminRouter);
 app.use("/profile", profileRouter);
 app.use("/chat",    chatRouter);
+app.use("/prices",  pricesRouter);
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 
