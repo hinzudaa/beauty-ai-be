@@ -146,29 +146,23 @@ router.post("/generate-looks", requireAuth, requirePro, async (req: Request, res
 
   const items: { name: string; prompt: string }[] = [];
 
-  // Hairstyle edits — нүүр яг хэвээр, зөвхөн үс өөрчлөгдөнө
-  for (const style of hairRecommendations.slice(0, 3)) {
+  // 2 hair looks (top 2 recommendations)
+  for (const style of hairRecommendations.slice(0, 2)) {
     items.push({
       name: style,
-      prompt: `
-Keep the exact same person, face, identity, and facial structure from the input image.
-Only change the hairstyle to: ${style}.
-Maintain: same jawline, same eyes, same nose, same lips, same skin tone (${skinTone}).
-Style: professional fashion portrait, studio lighting, ultra realistic, 4K.
-      `.trim(),
+      prompt: `Keep the exact same person, face, identity, and facial structure from the input image. Only change the hairstyle to: ${style}. Maintain: same jawline, same eyes, same nose, same lips, same skin tone (${skinTone}). Style: professional beauty portrait, studio lighting, ultra realistic, 4K.`,
     });
   }
 
-  // Outfit edit — нүүр яг хэвээр, зөвхөн хувцас өөрчлөгдөнө
+  // 2 outfit looks — same base style, different color/silhouette variation
   if (outfitStyle) {
     items.push({
-      name: "Style Look",
-      prompt: `
-Keep the exact same person and face identity from the input image.
-Only change the clothing to: ${outfitStyle}, suitable for ${occasion}.
-Do NOT change: face shape (${faceShape}), facial features, or body proportions.
-Style: full body fashion photography, studio lighting, realistic, high-end editorial.
-      `.trim(),
+      name: "Outfit Look 1",
+      prompt: `Keep the exact same person and face identity from the input image. Only change clothing to: ${outfitStyle}, suitable for ${occasion}. Do NOT change face shape (${faceShape}) or facial features. Style: full body fashion photography, studio lighting, realistic, editorial.`,
+    });
+    items.push({
+      name: "Outfit Look 2",
+      prompt: `Keep the exact same person and face identity from the input image. Only change clothing to a different color or silhouette variation of: ${outfitStyle}, suitable for ${occasion}. Do NOT change face shape (${faceShape}) or facial features. Style: full body fashion photography, natural lighting, realistic, modern.`,
     });
   }
 
