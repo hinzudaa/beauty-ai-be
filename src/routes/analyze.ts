@@ -62,18 +62,24 @@ function getSeason(): string {
   return "Өвөл";
 }
 
-/* ── POST /analyze/full — all 3 in parallel, counts as 1 usage ───── */
+/* ── POST /analyze/full ───────────────────────────────────────────
+   Body: { url: string, event?: string }
+   url  — Cloudflare R2 CDN URL (or any public image URL)
+   Runs 3 AI analyses in parallel and counts as 1 subscription use.
+─────────────────────────────────────────────────────────────────── */
 router.post("/full", requireAuth, requireAccess, async (req: Request, res: Response) => {
-  const { image, event = "casual" } = req.body as { image?: string; event?: string };
-  if (!image) { res.status(400).json({ error: "image шаардлагатай" }); return; }
+  const { url, event = "casual" } = req.body as { url?: string; event?: string };
 
-  const base64    = image.replace(/^data:image\/\w+;base64,/, "");
-  const mimeMatch = image.match(/^data:(image\/\w+);base64,/);
-  const mime      = mimeMatch ? mimeMatch[1] : "image/jpeg";
-  const imgUrl    = `data:${mime};base64,${base64}`;
-  const season    = getSeason();
+  if (!url) {
+    res.status(400).json({ error: "url шаардлагатай (Cloudflare R2 CDN URL)" });
+    return;
+  }
 
-  const imgContent = { type: "image_url" as const, image_url: { url: imgUrl, detail: "low" as const } };
+  const season     = getSeason();
+  const imgContent = {
+    type:      "image_url" as const,
+    image_url: { url, detail: "low" as const },   // OpenAI supports public URLs natively
+  };
 
   try {
     const [faceComp, hairComp, outfitComp] = await Promise.all([
@@ -101,20 +107,23 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
     const hc = hairComp.choices[0].message.content;
     const oc = outfitComp.choices[0].message.content;
 
-    if (!fc || !hc || !oc) { res.status(500).json({ error: "AI хариу буцааж ирсэнгүй" }); return; }
+    if (!fc || !hc || !oc) {
+      res.status(500).json({ error: "AI хариу буцааж ирсэнгүй" });
+      return;
+    }
 
-    const face   = JSON.parse(fc) as Record<string, unknown>;
-    const hair   = JSON.parse(hc) as Record<string, unknown>;
-    const outfit = JSON.parse(oc) as { outfits?: unknown[] };
+    const face   = JSON.parse(fc)  as Record<string, unknown>;
+    const hair   = JSON.parse(hc)  as Record<string, unknown>;
+    const outfit = JSON.parse(oc)  as { outfits?: unknown[] };
 
-    // Increment subscription monthly usage (once per session)
+    // Count once per session
     const user = await User.findById(req.userId);
     if (user) {
       await User.findByIdAndUpdate(req.userId, { $inc: { "subscription.monthlyUsage": 1 } });
       UsageLog.create({ userId: user._id, phone: user.phone, feature: "full" }).catch(() => {});
     }
 
-    res.json({ face, hair, outfits: outfit.outfits ?? [] });
+    res.json({ face, hair, outfits: outfit.outfits ?? [], photoUrl: url });
   } catch (err) {
     console.error("[analyze/full] error:", err instanceof Error ? err.message : err);
     res.status(500).json({ error: "Шинжилгээ хийхэд алдаа гарлаа" });
