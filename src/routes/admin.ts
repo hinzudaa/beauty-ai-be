@@ -5,6 +5,7 @@ import { User } from "../models/user";
 import { Payment } from "../models/payment";
 import { UsageLog } from "../models/usageLog";
 import { getSetting, setSetting } from "../models/settings";
+import { PushSubscription } from "../models/pushSubscription";
 
 const router = Router();
 
@@ -229,6 +230,43 @@ router.get("/payments", requireAdmin, async (req: Request, res: Response) => {
     page,
     pages: Math.ceil(total / limit),
   });
+});
+
+/* ── GET /admin/vapid-public-key — returns public key for push subscription ── */
+router.get("/vapid-public-key", requireAdmin, (_req: Request, res: Response) => {
+  res.json({ publicKey: config.vapid.publicKey });
+});
+
+/* ── POST /admin/push/subscribe — save push subscription ── */
+router.post("/push/subscribe", requireAdmin, async (req: Request, res: Response) => {
+  const { endpoint, keys } = req.body as {
+    endpoint?: string;
+    keys?: { p256dh: string; auth: string };
+  };
+
+  if (!endpoint || !keys?.p256dh || !keys?.auth) {
+    res.status(400).json({ error: "endpoint болон keys шаардлагатай" });
+    return;
+  }
+
+  try {
+    await PushSubscription.findOneAndUpdate(
+      { endpoint },
+      { endpoint, keys },
+      { upsert: true, new: true }
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[push/subscribe]", err);
+    res.status(500).json({ error: "Subscription хадгалахад алдаа гарлаа" });
+  }
+});
+
+/* ── DELETE /admin/push/unsubscribe — remove push subscription ── */
+router.delete("/push/unsubscribe", requireAdmin, async (req: Request, res: Response) => {
+  const { endpoint } = req.body as { endpoint?: string };
+  if (endpoint) await PushSubscription.deleteOne({ endpoint });
+  res.json({ ok: true });
 });
 
 export default router;

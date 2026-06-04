@@ -37,6 +37,11 @@ export const config = {
   fal: {
     key: process.env.FAL_KEY ?? "",
   },
+  vapid: {
+    publicKey:  process.env.VAPID_PUBLIC_KEY  ?? "",
+    privateKey: process.env.VAPID_PRIVATE_KEY ?? "",
+    email:      process.env.VAPID_EMAIL       ?? "mailto:admin@looka.mn",
+  },
   cloudinary: {
     cloudName:  required("CLOUDINARY_CLOUD_NAME"),
     apiKey:     required("CLOUDINARY_API_KEY"),

@@ -5,6 +5,7 @@ import { createInvoice, checkPayment } from "../services/qpay";
 import { Payment } from "../models/payment";
 import { User } from "../models/user";
 import { getSetting } from "../models/settings";
+import { sendAdminPush } from "../services/push";
 
 const router = Router();
 
@@ -151,7 +152,15 @@ router.get("/check/:invoiceId", requireAuth, async (req: Request, res: Response)
         { new: true }
       );
 
-      if (payment && (payment.type === "basic" || payment.type === "pro")) {
+      if (payment && (payment.type === "basic" || payment.type === "standard" || payment.type === "pro")) {
+        // Push notification to admin when plan is purchased
+        const planLabel = payment.type === "pro" ? "Pro" : payment.type === "standard" ? "Standard" : "Basic";
+        sendAdminPush({
+          title: `💳 Шинэ захиалга — ${planLabel}`,
+          body:  `${payment.phone} · ₮${payment.amount.toLocaleString()}`,
+          icon:  "/icon-192.png",
+          url:   "/dashboard/payments",
+        }).catch(() => {});
         const now       = new Date();
         const expiresAt = new Date(now.getTime() + MS_30);
 
