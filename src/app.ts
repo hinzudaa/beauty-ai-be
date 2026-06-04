@@ -11,13 +11,24 @@ import uploadRouter  from "./routes/upload";
 
 const app = express();
 
+const ALLOWED_ORIGINS = [
+  // Local development
+  /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,
+  // Production
+  "https://looka.beauty",
+  "https://www.looka.beauty",
+  "https://admin.looka.beauty",
+  // Extra origin from env (optional override)
+  ...(process.env.ALLOWED_ORIGIN ? [process.env.ALLOWED_ORIGIN] : []),
+];
+
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
-      return cb(null, true);
-    }
-    const allowed = process.env.ALLOWED_ORIGIN;
-    if (allowed && origin === allowed) return cb(null, true);
+    if (!origin) return cb(null, true); // server-to-server / curl
+    const ok = ALLOWED_ORIGINS.some((o) =>
+      typeof o === "string" ? o === origin : o.test(origin)
+    );
+    if (ok) return cb(null, true);
     cb(new Error(`CORS: origin ${origin} not allowed`));
   },
   credentials: true,
