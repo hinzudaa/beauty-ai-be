@@ -30,7 +30,7 @@ const LOOKSMAX_PROMPT = [
   "",
   "{",
   '  "gender": "Зургаас харж тодорхойлсон хүйс: male эсвэл female",',
-  '  "faceShape": "Нүүрний хэлбэр (Зууван / Дугуй / Дөрвөлжин / Зүрх / Алмаз / Урт)",',
+  '  "faceShape": "Нүүрний хэлбэрийг зургаас шууд шинжлэн тайлбарла — урьдчилан тодорхойлсон ангилалгүйгээр. Нүүрний өргөн/урт харьцаа, эрүүний шугам, хацрын өндрийг харьцуулж яггүй тодорхойлол. Жишээ: уртавтар нарийхан нүүр, доошоо нарийссан зүрх хэлбэртэй, дугуйвтар дэлгэр нүүр гэх мэт.",',
   '  "lookmaxScore": 5.5,',
   "",
   '  "features": {',
@@ -54,7 +54,9 @@ const LOOKSMAX_PROMPT = [
   "  ],",
   "",
   '  "makeupTips": "Энэ хүний нүүрний хэлбэр, онцлогт тохирсон 1–2 нүүр будалтын конкрет зөвлөгөө (жишээ: contour хаана хэрэглэх, ямар lip color тохирох)",',
-  '  "hairRecommendations": ["Нүүрний хэлбэрт тохирсон 3 үс засалтын нэр"],',
+  '  "hairRecommendations": [',
+  '    "Энэ хүний нүүрний хэлбэр, хацрын шугам, нүдний байрлал, эрүүний тэнцвэрийг харгалзан хамгийн хөөрхөн, царайлаг, гоёмсог харагдуулах 3 үс засалтын НЭР — загвар журналын cover photo-д тохирох чанартай. Зөвхөн үс засалтын нэрийг монгол болон англи хэлний хосолсон богино нэрээр бич.",',
+  '  ],',
   '  "outfitStyle": "Undertone болон seasonal color-д үндэслэсэн хувцасны зөвлөмж — ямар өнгийн хослол хамгийн их гэрэлтүүлэх",',
   '  "colorPalette": ["#hex1", "#hex2", "#hex3", "#hex4", "#hex5"]',
   "  // colorPalette: зургаас шууд харж тодорхойлсон ЯГГҮЙ 5 өнгө —",
@@ -96,7 +98,7 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
 
   try {
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-4o-mini",
       messages: [{
         role: "user",
         content: [
@@ -113,13 +115,7 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
 
     const analysis = JSON.parse(content);
 
-    const user = await User.findById(req.userId);
-    if (user) {
-      await User.findByIdAndUpdate(req.userId, { $inc: { "subscription.monthlyUsage": 1 } });
-      UsageLog.create({ userId: user._id, phone: user.phone, feature: "full" }).catch(() => {});
-    }
-
-    // Save analysis to DB so user can view it again from profile
+    // Save analysis to DB — monthlyUsage increments only after generate-looks completes
     const saved = await Analysis.create({
       userId:   req.userId,
       photoUrl: url,
@@ -257,6 +253,12 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
 
     if (analysisId) {
       Analysis.findByIdAndUpdate(analysisId, { looks }).catch(() => {});
+    }
+
+    // Increment monthlyUsage only after looks are successfully generated
+    if (user) {
+      await User.findByIdAndUpdate(req.userId, { $inc: { "subscription.monthlyUsage": 1 } });
+      UsageLog.create({ userId: user._id, phone: user.phone, feature: "full" }).catch(() => {});
     }
 
     res.json({ looks });
