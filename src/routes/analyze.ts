@@ -227,4 +227,25 @@ router.post("/generate-looks", requireAuth, requirePro, async (req: Request, res
   }
 });
 
+/* ── GET /analyze/result/:id — public, no auth ───────────────────
+   Used by the shareable results page to fetch analysis data.
+   Facebook/OG crawler calls this too.
+─────────────────────────────────────────────────────────────────── */
+router.get("/result/:id", async (req: Request, res: Response) => {
+  try {
+    const doc = await Analysis.findById(req.params.id).lean();
+    if (!doc) { res.status(404).json({ error: "Analysis not found" }); return; }
+    res.json({
+      id:        doc._id,
+      photoUrl:  doc.photoUrl,
+      analysis:  doc.analysis,
+      looks:     doc.looks,
+      occasion:  doc.occasion,
+      createdAt: doc.createdAt,
+    });
+  } catch {
+    res.status(404).json({ error: "Not found" });
+  }
+});
+
 export default router;
