@@ -1,11 +1,10 @@
 import { Router, Request, Response } from "express";
-import { InferenceClient } from "@huggingface/inference";
+import OpenAI from "openai";
 import { config } from "../config";
 import { requireAuth, requirePro } from "../middleware/auth";
 
-const router  = Router();
-const client  = new InferenceClient(config.hf.token);
-const MODEL   = "meta-llama/Meta-Llama-3-8B-Instruct";
+const router = Router();
+const openai = new OpenAI({ apiKey: config.openai.apiKey });
 
 const SYSTEM_PROMPT = `Та Looka Beauty AI платформын хувийн AI стилист юм. Монгол хэрэглэгчдэд хувцас, үс засал, грим, стилийн талаар мэргэжлийн зөвлөгөө өгнө.
 
@@ -32,22 +31,22 @@ router.post(
     }
 
     try {
-      const messages = [
-        { role: "system" as const,    content: SYSTEM_PROMPT },
-        ...((history ?? []).slice(-10) as Array<{ role: "user" | "assistant"; content: string }>),
-        { role: "user" as const, content: message },
+      const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+        { role: "system", content: SYSTEM_PROMPT },
+        ...((history ?? []).slice(-10) as OpenAI.Chat.ChatCompletionMessageParam[]),
+        { role: "user", content: message },
       ];
 
-      const result = await client.chatCompletion({
-        model:      MODEL,
+      const completion = await openai.chat.completions.create({
+        model:      "gpt-4o",
         messages,
         max_tokens: 600,
       });
 
-      const reply = result.choices[0]?.message?.content ?? "";
+      const reply = completion.choices[0]?.message?.content ?? "";
       res.json({ reply });
     } catch (err) {
-      console.error("[chat] HF error:", err instanceof Error ? err.message : err);
+      console.error("[chat] error:", err instanceof Error ? err.message : err);
       res.status(500).json({ error: "Хариу боловсруулахад алдаа гарлаа" });
     }
   }

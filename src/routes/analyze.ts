@@ -1,7 +1,6 @@
 import { Router, Request, Response } from "express";
 import OpenAI from "openai";
 import { v2 as cloudinary } from "cloudinary";
-import { Readable } from "stream";
 import { config } from "../config";
 import { requireAuth, requireAccess } from "../middleware/auth";
 import { User } from "../models/user";
@@ -10,47 +9,38 @@ import { UsageLog } from "../models/usageLog";
 const router = Router();
 const openai = new OpenAI({ apiKey: config.openai.apiKey });
 
-/* ── Looksmaxxing analysis prompt ─────────────────────────────────
-   GPT-4o Vision reads the uploaded selfie and returns a structured
-   looksmaxxing report — face shape, feature breakdown, score,
-   strengths, improvement tips, and style recommendations.
-─────────────────────────────────────────────────────────────────── */
+/* ── Looksmaxxing analysis prompt (GPT-4o Vision) ─────────────── */
 const LOOKSMAX_PROMPT = `Та мэргэжлийн looksmaxxing AI юм. Энэ хүний нүүрийг шинжлээд зөвхөн дараах JSON форматаар хариул.
 Нэмэлт тайлбар, markdown оруулахгүй — зөвхөн JSON объект.
 
 {
-  "faceShape": "Нүүрний хэлбэр монгол хэлээр (Зууван / Дугуй / Дөрвөлжин / Зүрх / Алмаз / Урт)",
+  "faceShape": "Нүүрний хэлбэр (Зууван / Дугуй / Дөрвөлжин / Зүрх / Алмаз / Урт)",
   "lookmaxScore": 7.2,
   "features": {
-    "eyes": "Нүдний хэлбэр, байршлын дүгнэлт",
+    "eyes":    "Нүдний хэлбэр, байршлын дүгнэлт",
     "jawline": "Эрүүний хүч, тодорхойлолт",
-    "chin": "Эрүүний доор хэсгийн тэнцвэр",
-    "nose": "Хамрын пропорц, хэлбэр",
-    "lips": "Уруулын дүүрэн байдал, хэлбэр"
+    "chin":    "Эрүүний доор хэсгийн тэнцвэр",
+    "nose":    "Хамрын пропорц, хэлбэр",
+    "lips":    "Уруулын дүүрэн байдал, хэлбэр"
   },
-  "skinTone": "Арьсны тон",
-  "strengths": ["3–4 хамгийн давуу тал"],
-  "improvements": [
-    "3–4 лooksmaxxing зөвлөмж — жишээ нь: mewing, skincare routine, хирурги биш аргаар сайжруулах"
-  ],
-  "hairRecommendations": ["Нүүрний хэлбэрт тохирсон 3 үс засалт монгол+англи хэлээр"],
-  "outfitStyle": "Физиологид тохирсон хувцасны ерөнхий зөвлөмж",
-  "colorPalette": ["#hex1", "#hex2", "#hex3", "#hex4", "#hex5"]
+  "skinTone": "Арьсны тон (жишээ: Дулаан дунд, Хүйтэн цайвар)",
+  "strengths":           ["3–4 хамгийн давуу тал монгол хэлээр"],
+  "improvements":        ["3–4 looksmaxxing зөвлөмж монгол хэлээр — хирурги биш аргаар"],
+  "hairRecommendations": ["Нүүрний хэлбэрт тохирсон 3 үс засалт нэр"],
+  "outfitStyle":         "Физиологид тохирсон хувцасны ерөнхий зөвлөмж монгол хэлээр",
+  "colorPalette":        ["#hex1", "#hex2", "#hex3", "#hex4", "#hex5"]
 }
 
-lookmaxScore: 1–10 оноо, нийт нүүрний хамгийн сайн дүн.
-improvements: практик, хирурги биш, монгол хэлээр.`;
+lookmaxScore: 1–10 оноо. improvements: практик, монгол хэлээр.`;
 
-/* ── Save a URL-based image to Cloudinary ─────────────────────────
-   DALL-E 3 returns temporary URLs — we save them permanently to CDN.
-─────────────────────────────────────────────────────────────────── */
-async function saveUrlToCloudinary(imageUrl: string, folder = "looka/looks"): Promise<string> {
+/* ── Save Cloudinary temp URL permanently ─────────────────────── */
+async function saveToCDN(imageUrl: string): Promise<string> {
   return new Promise((resolve, reject) => {
     cloudinary.uploader.upload(
       imageUrl,
-      { folder, resource_type: "image" },
+      { folder: "looka/looks", resource_type: "image" },
       (err, result) => {
-        if (err || !result) return reject(err ?? new Error("Cloudinary upload failed"));
+        if (err || !result) return reject(err ?? new Error("CDN upload failed"));
         resolve(result.secure_url);
       }
     );
@@ -58,8 +48,7 @@ async function saveUrlToCloudinary(imageUrl: string, folder = "looka/looks"): Pr
 }
 
 /* ── POST /analyze/full ───────────────────────────────────────────
-   1. GPT-4o Vision → full looksmaxxing analysis report (~5s)
-   2. Subscription usage incremented
+   GPT-4o Vision → full looksmaxxing analysis report
 ─────────────────────────────────────────────────────────────────── */
 router.post("/full", requireAuth, requireAccess, async (req: Request, res: Response) => {
   const { url, event = "casual" } = req.body as { url?: string; event?: string };
@@ -88,7 +77,6 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
 
     const analysis = JSON.parse(content);
 
-    // Count one subscription use
     const user = await User.findById(req.userId);
     if (user) {
       await User.findByIdAndUpdate(req.userId, { $inc: { "subscription.monthlyUsage": 1 } });
@@ -97,34 +85,75 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
 
     res.json({ analysis, occasion: event });
   } catch (err) {
-    console.error("[analyze/full] error:", err instanceof Error ? err.message : err);
+    console.error("[analyze/full]", err instanceof Error ? err.message : err);
     res.status(500).json({ error: "Шинжилгээ хийхэд алдаа гарлаа" });
   }
 });
 
 /* ── POST /analyze/generate-looks ────────────────────────────────
-   DALL-E 3 generates look inspiration images based on the analysis.
-   Called right after /full — images load progressively in the UI.
+   DALL-E 3 generates inspiration images INFORMED by the looksmax
+   analysis — face shape + skin tone baked into every prompt.
 
    Body: {
-     photoUrl: string,              — original selfie (used in prompt context)
-     items: Array<{ name, prompt }> — up to 6 looks
+     analysis: { faceShape, skinTone, hairRecommendations, outfitStyle },
+     occasion: string
    }
 ─────────────────────────────────────────────────────────────────── */
 router.post("/generate-looks", requireAuth, async (req: Request, res: Response) => {
-  const { items } = req.body as {
-    items?: Array<{ name: string; prompt: string }>;
+  const { analysis, occasion = "casual" } = req.body as {
+    analysis?: {
+      faceShape:           string;
+      skinTone:            string;
+      hairRecommendations: string[];
+      outfitStyle:         string;
+    };
+    occasion?: string;
   };
 
-  if (!Array.isArray(items) || items.length === 0) {
-    res.status(400).json({ error: "items шаардлагатай" });
+  if (!analysis?.faceShape) {
+    res.status(400).json({ error: "analysis шаардлагатай" });
     return;
   }
 
+  const { faceShape, skinTone, hairRecommendations = [], outfitStyle = "" } = analysis;
+
+  // Build analysis-informed DALL-E 3 prompts
+  const hairItems = hairRecommendations.slice(0, 3).map((style) => ({
+    name: style,
+    prompt: `
+A high-quality beauty portrait inspiration photo.
+Subject characteristics:
+- Face shape: ${faceShape}
+- Skin tone: ${skinTone}
+- Hairstyle: ${style}
+
+Style: modern looksmaxxing aesthetic, studio lighting, clean background, 4K, photorealistic.
+Focus on the hairstyle clearly. Professional fashion photography.
+`.trim(),
+  }));
+
+  const outfitItem = outfitStyle
+    ? [{
+        name: "Style Inspiration",
+        prompt: `
+A full-body fashion inspiration photo.
+Subject characteristics:
+- Face shape: ${faceShape}
+- Skin tone: ${skinTone}
+- Outfit style: ${outfitStyle}
+- Occasion: ${occasion}
+
+Style: looksmaxxing aesthetic, clean background, natural lighting, 4K, photorealistic.
+Professional fashion photography, modern and stylish.
+`.trim(),
+      }]
+    : [];
+
+  const items = [...hairItems, ...outfitItem];
+
   try {
-    // Generate all images in parallel (DALL-E 3 handles up to 5 concurrent requests)
     const looks = await Promise.all(
-      items.slice(0, 6).map(async (item) => {
+      items.map(async (item) => {
         const response = await openai.images.generate({
           model:   "dall-e-3",
           prompt:  item.prompt,
@@ -134,19 +163,17 @@ router.post("/generate-looks", requireAuth, async (req: Request, res: Response) 
         });
 
         const tempUrl = response.data?.[0]?.url;
-        if (!tempUrl) throw new Error("DALL-E returned no image URL");
-        const tempUrlStr = tempUrl;
+        if (!tempUrl) throw new Error("DALL-E returned no URL");
 
-        // Save to Cloudinary so the URL doesn't expire
-        const permanentUrl = await saveUrlToCloudinary(tempUrlStr);
-
+        // Persist to Cloudinary (DALL-E URLs expire in ~1 hour)
+        const permanentUrl = await saveToCDN(tempUrl);
         return { name: item.name, imageUrl: permanentUrl };
       })
     );
 
     res.json({ looks });
   } catch (err) {
-    console.error("[analyze/generate-looks] error:", err instanceof Error ? err.message : err);
+    console.error("[analyze/generate-looks]", err instanceof Error ? err.message : err);
     res.status(500).json({ error: "Look зураг үүсгэхэд алдаа гарлаа" });
   }
 });

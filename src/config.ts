@@ -42,7 +42,4 @@ export const config = {
   openai: {
     apiKey: required("OPENAI_API_KEY"),
   },
-  hf: {
-    token: process.env.HF_TOKEN ?? "",   // optional now
-  },
 };
