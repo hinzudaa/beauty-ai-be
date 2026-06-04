@@ -9,7 +9,7 @@ import { UsageLog } from "../models/usageLog";
 const router = Router();
 const openai = new OpenAI({ apiKey: config.openai.apiKey });
 
-/* ── Looksmaxxing analysis prompt (GPT-4o Vision) ─────────────── */
+/* ── GPT-4o looksmaxxing prompt ────────────────────────────────── */
 const LOOKSMAX_PROMPT = `Та мэргэжлийн looksmaxxing AI юм. Энэ хүний нүүрийг шинжлээд зөвхөн дараах JSON форматаар хариул.
 Нэмэлт тайлбар, markdown оруулахгүй — зөвхөн JSON объект.
 
@@ -31,9 +31,9 @@ const LOOKSMAX_PROMPT = `Та мэргэжлийн looksmaxxing AI юм. Энэ 
   "colorPalette":        ["#hex1", "#hex2", "#hex3", "#hex4", "#hex5"]
 }
 
-lookmaxScore: 1–10 оноо. improvements: практик, монгол хэлээр.`;
+lookmaxScore: 1–10. improvements: практик, хирурги биш, монгол хэлээр.`;
 
-/* ── Save Cloudinary temp URL permanently ─────────────────────── */
+/* ── Save DALL-E URL to Cloudinary (DALL-E URLs expire in ~1hr) ── */
 async function saveToCDN(imageUrl: string): Promise<string> {
   return new Promise((resolve, reject) => {
     cloudinary.uploader.upload(
@@ -47,9 +47,9 @@ async function saveToCDN(imageUrl: string): Promise<string> {
   });
 }
 
-/* ── POST /analyze/full ───────────────────────────────────────────
-   GPT-4o Vision → full looksmaxxing analysis report
-─────────────────────────────────────────────────────────────────── */
+/* ══ POST /analyze/full ══════════════════════════════════════════
+   GPT-4o Vision → looksmaxxing analysis report
+══════════════════════════════════════════════════════════════════ */
 router.post("/full", requireAuth, requireAccess, async (req: Request, res: Response) => {
   const { url, event = "casual" } = req.body as { url?: string; event?: string };
 
@@ -65,7 +65,7 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
         role: "user",
         content: [
           { type: "image_url", image_url: { url, detail: "high" } },
-          { type: "text", text: LOOKSMAX_PROMPT },
+          { type: "text",      text: LOOKSMAX_PROMPT },
         ],
       }],
       response_format: { type: "json_object" },
@@ -90,17 +90,19 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
   }
 });
 
-/* ── POST /analyze/generate-looks ────────────────────────────────
-   DALL-E 3 generates inspiration images INFORMED by the looksmax
-   analysis — face shape + skin tone baked into every prompt.
+/* ══ POST /analyze/generate-looks (FACE-PRESERVING) ═════════════
+   gpt-image-1 image editing — хэрэглэгчийн SELFIE-г input болгон авч
+   зөвхөн үс / хувцас өөрчилнө. Нүүр 100% хадгалагдана.
 
    Body: {
+     imageUrl: string,            — original Cloudinary selfie URL
      analysis: { faceShape, skinTone, hairRecommendations, outfitStyle },
      occasion: string
    }
-─────────────────────────────────────────────────────────────────── */
+══════════════════════════════════════════════════════════════════ */
 router.post("/generate-looks", requireAuth, async (req: Request, res: Response) => {
-  const { analysis, occasion = "casual" } = req.body as {
+  const { imageUrl, analysis, occasion = "casual" } = req.body as {
+    imageUrl?: string;
     analysis?: {
       faceShape:           string;
       skinTone:            string;
@@ -110,62 +112,58 @@ router.post("/generate-looks", requireAuth, async (req: Request, res: Response) 
     occasion?: string;
   };
 
-  if (!analysis?.faceShape) {
-    res.status(400).json({ error: "analysis шаардлагатай" });
+  if (!imageUrl || !analysis?.faceShape) {
+    res.status(400).json({ error: "imageUrl болон analysis шаардлагатай" });
     return;
   }
 
   const { faceShape, skinTone, hairRecommendations = [], outfitStyle = "" } = analysis;
 
-  // Build analysis-informed DALL-E 3 prompts
-  const hairItems = hairRecommendations.slice(0, 3).map((style) => ({
-    name: style,
-    prompt: `
-A high-quality beauty portrait inspiration photo.
-Subject characteristics:
-- Face shape: ${faceShape}
-- Skin tone: ${skinTone}
-- Hairstyle: ${style}
+  const items: { name: string; prompt: string }[] = [];
 
-Style: modern looksmaxxing aesthetic, studio lighting, clean background, 4K, photorealistic.
-Focus on the hairstyle clearly. Professional fashion photography.
-`.trim(),
-  }));
+  // Hairstyle edits — нүүр яг хэвээр, зөвхөн үс өөрчлөгдөнө
+  for (const style of hairRecommendations.slice(0, 3)) {
+    items.push({
+      name: style,
+      prompt: `
+Keep the exact same person, face, identity, and facial structure from the input image.
+Only change the hairstyle to: ${style}.
+Maintain: same jawline, same eyes, same nose, same lips, same skin tone (${skinTone}).
+Style: professional fashion portrait, studio lighting, ultra realistic, 4K.
+      `.trim(),
+    });
+  }
 
-  const outfitItem = outfitStyle
-    ? [{
-        name: "Style Inspiration",
-        prompt: `
-A full-body fashion inspiration photo.
-Subject characteristics:
-- Face shape: ${faceShape}
-- Skin tone: ${skinTone}
-- Outfit style: ${outfitStyle}
-- Occasion: ${occasion}
-
-Style: looksmaxxing aesthetic, clean background, natural lighting, 4K, photorealistic.
-Professional fashion photography, modern and stylish.
-`.trim(),
-      }]
-    : [];
-
-  const items = [...hairItems, ...outfitItem];
+  // Outfit edit — нүүр яг хэвээр, зөвхөн хувцас өөрчлөгдөнө
+  if (outfitStyle) {
+    items.push({
+      name: "Style Look",
+      prompt: `
+Keep the exact same person and face identity from the input image.
+Only change the clothing to: ${outfitStyle}, suitable for ${occasion}.
+Do NOT change: face shape (${faceShape}), facial features, or body proportions.
+Style: full body fashion photography, studio lighting, realistic, high-end editorial.
+      `.trim(),
+    });
+  }
 
   try {
+    // Fetch original selfie as Blob for the image editing API
+    const selfieBlob = await fetch(imageUrl).then((r) => r.blob());
+
     const looks = await Promise.all(
       items.map(async (item) => {
-        const response = await openai.images.generate({
-          model:   "dall-e-3",
-          prompt:  item.prompt,
-          n:       1,
-          size:    "1024x1024",
-          quality: "standard",
+        const response = await openai.images.edit({
+          model:  "gpt-image-1",          // identity-preserving image model
+          image:  selfieBlob as File,      // original selfie input
+          prompt: item.prompt,
+          size:   "1024x1024",
         });
 
         const tempUrl = response.data?.[0]?.url;
-        if (!tempUrl) throw new Error("DALL-E returned no URL");
+        if (!tempUrl) throw new Error("gpt-image-1 returned no URL");
 
-        // Persist to Cloudinary (DALL-E URLs expire in ~1 hour)
+        // Persist to Cloudinary (URLs may expire)
         const permanentUrl = await saveToCDN(tempUrl);
         return { name: item.name, imageUrl: permanentUrl };
       })
