@@ -160,14 +160,9 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
 
   const {
     faceShape,
-    skinTone,
     hairRecommendations = [],
     outfitStyle = "",
-    colorPalette = [],
-    features = {} as Record<string, string>,
-  } = analysis as typeof analysis & { features?: Record<string, string> };
-
-  const paletteStr  = colorPalette.slice(0, 3).join(", ") || skinTone;
+  } = analysis;
 
   // Check user's plan to decide how many looks to generate
   const user = await User.findById(req.userId);
@@ -176,39 +171,40 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
   // Basic:    1 hair + 1 outfit = 2 images
   // Standard: 1 hair + 2 outfit = 3 images
   // Pro:      2 hair + 2 outfit + 1 bonus = 5 images
-  const hairCount   = plan === "pro" ? 2 : 1;
-  const outfitCount = plan === "basic" ? 1 : 2;
-  const isPro       = plan === "pro";
+  const hairCount = plan === "pro" ? 2 : 1;
+  const isPro     = plan === "pro";
 
   const items: { name: string; prompt: string }[] = [];
 
-  // Hair looks
+  // ── Hair looks — NO color palette, NO skin tone in prompt ──
+  // InstantID already reads skin tone from the input image.
+  // Prompt only describes the TARGET hairstyle to maximize change.
   for (const style of hairRecommendations.slice(0, hairCount)) {
     items.push({
       name: style,
-      prompt: `${style} hairstyle, ${skinTone} skin, ${faceShape} face shape, beauty portrait, studio lighting, photorealistic, high quality`,
+      prompt: `A person with ${style} hairstyle. The hair is clearly changed to ${style}. ${faceShape} face. Beauty portrait, soft studio lighting, clean background, photorealistic, 4K. Focus on the hairstyle transformation.`,
     });
   }
 
-  // Outfit looks
+  // ── Outfit looks — describe clothing only, no color palette numbers ──
   if (outfitStyle) {
     items.push({
       name: "Outfit Look",
-      prompt: `${outfitStyle} outfit, colors ${paletteStr}, suitable for ${occasion}, ${skinTone} skin, full body fashion photography, studio lighting, photorealistic, high quality`,
+      prompt: `Full body fashion photo. Person wearing ${outfitStyle}, appropriate for ${occasion}. Stylish, well-fitted clothing. Clean studio background, professional fashion photography, photorealistic, 4K. Show the full outfit clearly.`,
     });
     if (isPro) {
       items.push({
         name: "Outfit Look 2",
-        prompt: `alternative ${outfitStyle} outfit, different color variation from ${paletteStr}, suitable for ${occasion}, ${skinTone} skin, full body fashion photography, natural lighting, photorealistic, high quality`,
+        prompt: `Full body fashion photo. Person wearing a different variation of ${outfitStyle} for ${occasion}. Different silhouette or style. Clean studio background, professional fashion photography, photorealistic, 4K.`,
       });
     }
   }
 
-  // Pro bonus: casual everyday look
+  // Pro bonus
   if (isPro) {
     items.push({
       name: "Casual Look",
-      prompt: `casual everyday outfit using colors ${paletteStr}, complementing ${skinTone} skin tone, comfortable modern style, ${skinTone} skin, full body fashion photography, natural lighting, photorealistic, high quality`,
+      prompt: `Full body photo. Person wearing a casual everyday modern outfit suitable for ${occasion}. Comfortable and stylish. Clean background, natural lighting, photorealistic, 4K.`,
     });
   }
 
