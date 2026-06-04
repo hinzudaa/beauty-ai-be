@@ -15,8 +15,16 @@ const PRICE_DEFAULTS: Record<string, number> = {
   proPrice:      29999,
 };
 
-function signAdminToken(): string {
-  return jwt.sign({ role: "admin" }, config.jwt.secret, { expiresIn: "1d" } as jwt.SignOptions);
+/** All admin accounts — add/remove here */
+const ADMINS: Array<{ username: string; password: string }> = [
+  { username: config.admin.username, password: config.admin.password }, // from .env (admin/123)
+  { username: "temka",               password: "123" },
+  { username: "dalai",               password: "123" },
+  { username: "tushigk",             password: "123" },
+];
+
+function signAdminToken(username: string): string {
+  return jwt.sign({ role: "admin", username }, config.jwt.secret, { expiresIn: "1d" } as jwt.SignOptions);
 }
 
 function requireAdmin(req: Request, res: Response, next: NextFunction): void {
@@ -33,8 +41,9 @@ function requireAdmin(req: Request, res: Response, next: NextFunction): void {
 
 router.post("/login", (req: Request, res: Response) => {
   const { username, password } = req.body as { username?: string; password?: string };
-  if (username === config.admin.username && password === config.admin.password) {
-    res.json({ token: signAdminToken() });
+  const match = ADMINS.find((a) => a.username === username && a.password === password);
+  if (match) {
+    res.json({ token: signAdminToken(match.username) });
   } else {
     res.status(401).json({ error: "Нэвтрэх мэдээлэл буруу байна" });
   }
