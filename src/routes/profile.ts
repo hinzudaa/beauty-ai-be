@@ -3,6 +3,7 @@ import { requireAuth } from "../middleware/auth";
 import { User } from "../models/user";
 import { Payment } from "../models/payment";
 import { UsageLog } from "../models/usageLog";
+import { Analysis } from "../models/analysis";
 
 const router = Router();
 
@@ -48,6 +49,36 @@ router.get("/", requireAuth, async (req: Request, res: Response) => {
       paidAt:    p.paidAt,
     })),
     usage,
+  });
+});
+
+/** GET /profile/analyses — past looksmaxxing results (newest first) */
+router.get("/analyses", requireAuth, async (req: Request, res: Response) => {
+  const page  = parseInt(String(req.query.page  ?? "1"),  10);
+  const limit = parseInt(String(req.query.limit ?? "10"), 10);
+  const skip  = (page - 1) * limit;
+
+  const [analyses, total] = await Promise.all([
+    Analysis.find({ userId: req.userId })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    Analysis.countDocuments({ userId: req.userId }),
+  ]);
+
+  res.json({
+    data: analyses.map((a) => ({
+      id:        a._id,
+      photoUrl:  a.photoUrl,
+      analysis:  a.analysis,
+      looks:     a.looks,
+      occasion:  a.occasion,
+      createdAt: a.createdAt,
+    })),
+    total,
+    page,
+    pages: Math.ceil(total / limit),
   });
 });
 

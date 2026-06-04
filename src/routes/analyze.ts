@@ -5,6 +5,7 @@ import { config } from "../config";
 import { requireAuth, requireAccess } from "../middleware/auth";
 import { User } from "../models/user";
 import { UsageLog } from "../models/usageLog";
+import { Analysis } from "../models/analysis";
 
 const router = Router();
 const openai = new OpenAI({ apiKey: config.openai.apiKey });
@@ -83,7 +84,16 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
       UsageLog.create({ userId: user._id, phone: user.phone, feature: "full" }).catch(() => {});
     }
 
-    res.json({ analysis, occasion: event });
+    // Save analysis to DB so user can view it again from profile
+    const saved = await Analysis.create({
+      userId:   req.userId,
+      photoUrl: url,
+      analysis,
+      looks:    [],
+      occasion: event,
+    });
+
+    res.json({ analysis, occasion: event, analysisId: String(saved._id) });
   } catch (err) {
     console.error("[analyze/full]", err instanceof Error ? err.message : err);
     res.status(500).json({ error: "Шинжилгээ хийхэд алдаа гарлаа" });
@@ -101,8 +111,9 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
    }
 ══════════════════════════════════════════════════════════════════ */
 router.post("/generate-looks", requireAuth, async (req: Request, res: Response) => {
-  const { imageUrl, analysis, occasion = "casual" } = req.body as {
-    imageUrl?: string;
+  const { imageUrl, analysisId, analysis, occasion = "casual" } = req.body as {
+    imageUrl?:   string;
+    analysisId?: string;
     analysis?: {
       faceShape:           string;
       skinTone:            string;
@@ -168,6 +179,11 @@ Style: full body fashion photography, studio lighting, realistic, high-end edito
         return { name: item.name, imageUrl: permanentUrl };
       })
     );
+
+    // Save generated looks back to the Analysis document
+    if (analysisId) {
+      Analysis.findByIdAndUpdate(analysisId, { looks }).catch(() => {});
+    }
 
     res.json({ looks });
   } catch (err) {
