@@ -157,12 +157,14 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
 
   // Check user's plan to decide how many looks to generate
   const user = await User.findById(req.userId);
-  const isPro = user?.subscription?.plan === "pro";
+  const plan = user?.subscription?.plan ?? "basic";
 
-  // Basic: 1 hair + 1 outfit = 2 images
-  // Pro:   2 hair + 2 outfit + 1 bonus = 5 images
-  const hairCount   = isPro ? 2 : 1;
-  const outfitCount = isPro ? 2 : 1;
+  // Basic:    1 hair + 1 outfit = 2 images
+  // Standard: 1 hair + 2 outfit = 3 images
+  // Pro:      2 hair + 2 outfit + 1 bonus = 5 images
+  const hairCount   = plan === "pro" ? 2 : 1;
+  const outfitCount = plan === "basic" ? 1 : 2;
+  const isPro       = plan === "pro";
 
   const items: { name: string; prompt: string }[] = [];
 

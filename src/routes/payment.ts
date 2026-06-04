@@ -9,13 +9,15 @@ import { getSetting } from "../models/settings";
 const router = Router();
 
 const PLAN_DEFAULTS: Record<string, number> = {
-  basicPrice: 19999,
-  proPrice:   29999,
+  basicPrice:    19999,
+  standardPrice: 24999,
+  proPrice:      29999,
 };
 
 const PLAN_DESC: Record<string, string> = {
-  basic: "Looka — Basic захиалга (сард 20 ашиглалт)",
-  pro:   "Looka — Pro захиалга (сард 40 ашиглалт + AI Стилист)",
+  basic:    "Looka — Basic захиалга (сард 5 шинжилгээ · 2 AI look)",
+  standard: "Looka — Standard захиалга (сард 10 шинжилгээ · 3 AI look)",
+  pro:      "Looka — Pro захиалга (сард 20 шинжилгээ · 5 AI look + Chat)",
 };
 
 const MS_30 = 30 * 24 * 60 * 60 * 1000;
@@ -25,11 +27,11 @@ const MS_30 = 30 * 24 * 60 * 60 * 1000;
  */
 async function calcUpgradePrice(
   userId: string,
-  newPlan: "basic" | "pro"
+  newPlan: "basic" | "standard" | "pro"
 ): Promise<{ amount: number; discount: number; remainingDays: number }> {
   const fullPrice = await getSetting<number>(
-    newPlan === "basic" ? "basicPrice" : "proPrice",
-    PLAN_DEFAULTS[newPlan === "basic" ? "basicPrice" : "proPrice"]
+    newPlan === "pro" ? "proPrice" : newPlan === "standard" ? "standardPrice" : "basicPrice",
+    PLAN_DEFAULTS[newPlan === "pro" ? "proPrice" : newPlan === "standard" ? "standardPrice" : "basicPrice"]
   );
 
   const user = await User.findById(userId);
@@ -46,8 +48,8 @@ async function calcUpgradePrice(
   const remainingDays     = Math.ceil(remainingMs / (24 * 60 * 60 * 1000));
 
   const currentPrice = await getSetting<number>(
-    sub.plan === "basic" ? "basicPrice" : "proPrice",
-    PLAN_DEFAULTS[sub.plan === "basic" ? "basicPrice" : "proPrice"]
+    sub.plan === "pro" ? "proPrice" : sub.plan === "standard" ? "standardPrice" : "basicPrice",
+    PLAN_DEFAULTS[sub.plan === "pro" ? "proPrice" : sub.plan === "standard" ? "standardPrice" : "basicPrice"]
   );
 
   const discount = Math.round(remainingFraction * currentPrice);
@@ -61,16 +63,16 @@ async function calcUpgradePrice(
 ─────────────────────────────────────────────────────────────────── */
 router.get("/upgrade-price", requireAuth, async (req: Request, res: Response) => {
   const plan = req.query.plan as string;
-  if (plan !== "basic" && plan !== "pro") {
-    res.status(400).json({ error: "plan must be 'basic' or 'pro'" });
+  if (!["basic","standard","pro"].includes(plan)) {
+    res.status(400).json({ error: "plan must be basic, standard or pro" });
     return;
   }
 
   try {
-    const { amount, discount, remainingDays } = await calcUpgradePrice(req.userId!, plan);
+    const { amount, discount, remainingDays } = await calcUpgradePrice(req.userId!, plan as "basic" | "standard" | "pro");
     const fullPrice = await getSetting<number>(
-      plan === "basic" ? "basicPrice" : "proPrice",
-      PLAN_DEFAULTS[plan === "basic" ? "basicPrice" : "proPrice"]
+      plan === "pro" ? "proPrice" : plan === "standard" ? "standardPrice" : "basicPrice",
+      PLAN_DEFAULTS[plan === "pro" ? "proPrice" : plan === "standard" ? "standardPrice" : "basicPrice"]
     );
     res.json({ amount, discount, fullPrice, remainingDays, isUpgrade: discount > 0 });
   } catch (err) {
@@ -88,8 +90,8 @@ router.post("/invoice", requireAuth, async (req: Request, res: Response) => {
     const user = await User.findById(req.userId);
     if (!user) { res.status(404).json({ error: "User not found" }); return; }
 
-    const plan = (req.body as { feature?: string }).feature as "basic" | "pro";
-    if (plan !== "basic" && plan !== "pro") {
+    const plan = (req.body as { feature?: string }).feature as "basic" | "standard" | "pro";
+    if (!["basic","standard","pro"].includes(plan)) {
       res.status(400).json({ error: "feature нь 'basic' эсвэл 'pro' байх ёстой" });
       return;
     }

@@ -1,7 +1,7 @@
 import mongoose, { Document, Schema, Model } from "mongoose";
 
 export interface ISubscription {
-  plan: "basic" | "pro";
+  plan: "basic" | "standard" | "pro";
   status: "active" | "expired";
   startedAt: Date;
   expiresAt: Date;
@@ -21,7 +21,7 @@ export interface IUserDocument extends IUser, Document {}
 
 const subscriptionSchema = new Schema<ISubscription>(
   {
-    plan:         { type: String, enum: ["basic", "pro"], required: true },
+    plan:         { type: String, enum: ["basic", "standard", "pro"], required: true },
     status:       { type: String, enum: ["active", "expired"], default: "active" },
     startedAt:    { type: Date, required: true },
     expiresAt:    { type: Date, required: true },

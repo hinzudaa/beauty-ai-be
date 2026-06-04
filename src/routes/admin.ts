@@ -9,8 +9,9 @@ import { getSetting, setSetting } from "../models/settings";
 const router = Router();
 
 const PRICE_DEFAULTS: Record<string, number> = {
-  basicPrice: 19999,
-  proPrice:   29999,
+  basicPrice:    19999,
+  standardPrice: 24999,
+  proPrice:      29999,
 };
 
 function signAdminToken(): string {
@@ -101,15 +102,16 @@ router.get("/usage", requireAdmin, async (req: Request, res: Response) => {
 });
 
 router.get("/settings", requireAdmin, async (_req: Request, res: Response) => {
-  const [basicPrice, proPrice] = await Promise.all([
-    getSetting<number>("basicPrice", PRICE_DEFAULTS.basicPrice),
-    getSetting<number>("proPrice",   PRICE_DEFAULTS.proPrice),
+  const [basicPrice, standardPrice, proPrice] = await Promise.all([
+    getSetting<number>("basicPrice",    PRICE_DEFAULTS.basicPrice),
+    getSetting<number>("standardPrice", PRICE_DEFAULTS.standardPrice),
+    getSetting<number>("proPrice",      PRICE_DEFAULTS.proPrice),
   ]);
-  res.json({ basicPrice, proPrice });
+  res.json({ basicPrice, standardPrice, proPrice });
 });
 
 router.put("/settings", requireAdmin, async (req: Request, res: Response) => {
-  const allowed = ["basicPrice", "proPrice"];
+  const allowed = ["basicPrice", "standardPrice", "proPrice"];
   const body    = req.body as Record<string, number>;
   const updates: Promise<void>[] = [];
 
@@ -124,11 +126,12 @@ router.put("/settings", requireAdmin, async (req: Request, res: Response) => {
 
   await Promise.all(updates);
 
-  const [basicPrice, proPrice] = await Promise.all([
-    getSetting<number>("basicPrice", PRICE_DEFAULTS.basicPrice),
-    getSetting<number>("proPrice",   PRICE_DEFAULTS.proPrice),
+  const [basicPrice, standardPrice, proPrice] = await Promise.all([
+    getSetting<number>("basicPrice",    PRICE_DEFAULTS.basicPrice),
+    getSetting<number>("standardPrice", PRICE_DEFAULTS.standardPrice),
+    getSetting<number>("proPrice",      PRICE_DEFAULTS.proPrice),
   ]);
-  res.json({ basicPrice, proPrice });
+  res.json({ basicPrice, standardPrice, proPrice });
 });
 
 router.get("/subscriptions", requireAdmin, async (req: Request, res: Response) => {
