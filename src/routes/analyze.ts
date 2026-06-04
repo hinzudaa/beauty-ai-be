@@ -55,7 +55,7 @@ const LOOKSMAX_PROMPT = [
   "",
   '  "makeupTips": "Энэ хүний нүүрний хэлбэр, онцлогт тохирсон 1–2 нүүр будалтын конкрет зөвлөгөө (жишээ: contour хаана хэрэглэх, ямар lip color тохирох)",',
   '  "hairRecommendations": [',
-  '    "Энэ хүний нүүрний хэлбэрт хамгийн тохирох 3 СОЛОНГОС үс засалтын нэр — K-pop болон K-drama загварт суурилсан. Зөвхөн солонгос үс засалт (Korean hairstyle) сонго. Үс засалтын нэрийг монгол болон англи хэлний хосолсон богино нэрээр бич. Жишээ: Two-block cut, Comma hair, Curtain bangs, Wolf cut гэх мэт солонгос трэнд.",',
+  '    "Энэ хүний нүүрний хэлбэрт хамгийн тохирох 3 СОЛОНГОС үс засалтын нэр санал болго. K-pop болон K-drama загварт суурилсан, зөвхөн Korean hairstyle сонго. Үс засалтын нэрийг монгол болон англи хэлний хосолсон богино нэрээр бич. Жишээ: Two-block cut, Comma hair, Curtain bangs, Wolf cut, Hush cut, Leaf cut, Shadow perm, Air bangs, Korean Bob, Layered cut,',
   '  ],',
   '  "outfitStyle": "Undertone болон seasonal color-д үндэслэсэн хувцасны зөвлөмж — ямар өнгийн хослол хамгийн их гэрэлтүүлэх",',
   '  "colorPalette": ["#hex1", "#hex2", "#hex3", "#hex4", "#hex5"]',
