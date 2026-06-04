@@ -14,10 +14,75 @@ const PLAN_DEFAULTS: Record<string, number> = {
 };
 
 const PLAN_DESC: Record<string, string> = {
-  basic: "Looka Beauty AI — Basic захиалга (сард 20 ашиглалт)",
-  pro:   "Looka Beauty AI — Pro захиалга (сард 40 ашиглалт + AI Стилист)",
+  basic: "Looka — Basic захиалга (сард 20 ашиглалт)",
+  pro:   "Looka — Pro захиалга (сард 40 ашиглалт + AI Стилист)",
 };
 
+const MS_30 = 30 * 24 * 60 * 60 * 1000;
+
+/** Calculate pro-rated upgrade price.
+ *  Returns the full price if the user has no active subscription or is on the same plan.
+ */
+async function calcUpgradePrice(
+  userId: string,
+  newPlan: "basic" | "pro"
+): Promise<{ amount: number; discount: number; remainingDays: number }> {
+  const fullPrice = await getSetting<number>(
+    newPlan === "basic" ? "basicPrice" : "proPrice",
+    PLAN_DEFAULTS[newPlan === "basic" ? "basicPrice" : "proPrice"]
+  );
+
+  const user = await User.findById(userId);
+  const sub  = user?.subscription;
+  const now  = new Date();
+
+  // No active sub, expired, or same plan → full price
+  if (!sub || sub.status !== "active" || sub.expiresAt <= now || sub.plan === newPlan) {
+    return { amount: fullPrice, discount: 0, remainingDays: 0 };
+  }
+
+  const remainingMs       = sub.expiresAt.getTime() - now.getTime();
+  const remainingFraction = Math.min(1, remainingMs / MS_30);
+  const remainingDays     = Math.ceil(remainingMs / (24 * 60 * 60 * 1000));
+
+  const currentPrice = await getSetting<number>(
+    sub.plan === "basic" ? "basicPrice" : "proPrice",
+    PLAN_DEFAULTS[sub.plan === "basic" ? "basicPrice" : "proPrice"]
+  );
+
+  const discount = Math.round(remainingFraction * currentPrice);
+  const amount   = Math.max(100, fullPrice - discount);   // min 100₮
+
+  return { amount, discount, remainingDays };
+}
+
+/* ── GET /payment/upgrade-price?plan=pro ──────────────────────────
+   Returns the pro-rated upgrade price for display in the frontend.
+─────────────────────────────────────────────────────────────────── */
+router.get("/upgrade-price", requireAuth, async (req: Request, res: Response) => {
+  const plan = req.query.plan as string;
+  if (plan !== "basic" && plan !== "pro") {
+    res.status(400).json({ error: "plan must be 'basic' or 'pro'" });
+    return;
+  }
+
+  try {
+    const { amount, discount, remainingDays } = await calcUpgradePrice(req.userId!, plan);
+    const fullPrice = await getSetting<number>(
+      plan === "basic" ? "basicPrice" : "proPrice",
+      PLAN_DEFAULTS[plan === "basic" ? "basicPrice" : "proPrice"]
+    );
+    res.json({ amount, discount, fullPrice, remainingDays, isUpgrade: discount > 0 });
+  } catch (err) {
+    console.error("[payment] upgrade-price error:", err);
+    res.status(500).json({ error: "Үнэ тооцоолоход алдаа гарлаа" });
+  }
+});
+
+/* ── POST /payment/invoice ────────────────────────────────────────
+   Creates a QPay invoice. If the user is upgrading, automatically
+   applies the pro-rated discount (remaining plan value deducted).
+─────────────────────────────────────────────────────────────────── */
 router.post("/invoice", requireAuth, async (req: Request, res: Response) => {
   try {
     const user = await User.findById(req.userId);
@@ -29,14 +94,21 @@ router.post("/invoice", requireAuth, async (req: Request, res: Response) => {
       return;
     }
 
-    const priceKey    = plan === "basic" ? "basicPrice" : "proPrice";
-    const callbackUrl = process.env.APP_BASE_URL ? `${process.env.APP_BASE_URL}/payment/callback` : undefined;
-    const amount      = await getSetting<number>(priceKey, PLAN_DEFAULTS[priceKey]);
+    const callbackUrl = process.env.APP_BASE_URL
+      ? `${process.env.APP_BASE_URL}/payment/callback`
+      : undefined;
+
+    // Server-side pro-rating (prevents price manipulation from client)
+    const { amount, discount } = await calcUpgradePrice(String(user._id), plan);
+
+    const desc = discount > 0
+      ? `${PLAN_DESC[plan]} [Upgrade: -${discount.toLocaleString()}₮ хасагдсан]`
+      : PLAN_DESC[plan];
 
     const invoice = await createInvoice({
       invoiceNo:   randomUUID(),
       amount,
-      description: PLAN_DESC[plan],
+      description: desc,
       callbackUrl,
     });
 
@@ -56,6 +128,8 @@ router.post("/invoice", requireAuth, async (req: Request, res: Response) => {
       paymentUrl: invoice.payment_url,
       urls:       invoice.urls ?? [],
       amount,
+      discount,
+      isUpgrade:  discount > 0,
     });
   } catch (err) {
     console.error("[payment] create invoice error:", err instanceof Error ? err.message : err);
@@ -75,16 +149,16 @@ router.get("/check/:invoiceId", requireAuth, async (req: Request, res: Response)
         { new: true }
       );
 
-      // Activate or extend subscription when a plan invoice is confirmed
       if (payment && (payment.type === "basic" || payment.type === "pro")) {
-        const now        = new Date();
-        const MS_30_DAYS = 30 * 24 * 60 * 60 * 1000;
+        const now       = new Date();
+        const expiresAt = new Date(now.getTime() + MS_30);
 
+        // For upgrades: extend from existing expiry if still active
         const existingUser = await User.findById(payment.userId);
         const existingSub  = existingUser?.subscription;
         const startFrom    =
           existingSub?.status === "active" && existingSub.expiresAt > now
-            ? existingSub.expiresAt   // extend from current expiry if still active
+            ? existingSub.expiresAt
             : now;
 
         await User.findByIdAndUpdate(payment.userId, {
@@ -92,9 +166,9 @@ router.get("/check/:invoiceId", requireAuth, async (req: Request, res: Response)
             plan:         payment.type,
             status:       "active",
             startedAt:    now,
-            expiresAt:    new Date(startFrom.getTime() + MS_30_DAYS),
+            expiresAt:    new Date(startFrom.getTime() + MS_30),
             monthlyUsage: 0,
-            usageResetAt: new Date(now.getTime() + MS_30_DAYS),
+            usageResetAt: expiresAt,
           },
         });
       }
