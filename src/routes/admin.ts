@@ -170,7 +170,7 @@ router.get("/subscriptions", requireAdmin, async (req: Request, res: Response) =
       status:       u.subscription?.status,
       expiresAt:    u.subscription?.expiresAt,
       monthlyUsage: u.subscription?.monthlyUsage ?? 0,
-      usageLimit:   u.subscription?.plan === "pro" ? 40 : 20,
+      usageLimit:   u.subscription?.plan === "pro" ? 20 : u.subscription?.plan === "standard" ? 10 : 5,
       startedAt:    u.subscription?.startedAt,
     })),
     total,
