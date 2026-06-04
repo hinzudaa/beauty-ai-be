@@ -10,9 +10,9 @@ import { PushSubscription } from "../models/pushSubscription";
 const router = Router();
 
 const PRICE_DEFAULTS: Record<string, number> = {
-  basicPrice:    19999,
-  standardPrice: 24999,
-  proPrice:      29999,
+  basicPrice:    19900,
+  standardPrice: 29900,
+  proPrice:      39900,
 };
 
 /** All admin accounts — add/remove here */

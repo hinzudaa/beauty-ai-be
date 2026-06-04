@@ -10,9 +10,9 @@ import { sendAdminPush } from "../services/push";
 const router = Router();
 
 const PLAN_DEFAULTS: Record<string, number> = {
-  basicPrice:    19999,
-  standardPrice: 24999,
-  proPrice:      29999,
+  basicPrice:    19900,
+  standardPrice: 29900,
+  proPrice:      39900,
 };
 
 const PLAN_DESC: Record<string, string> = {
