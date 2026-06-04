@@ -133,6 +133,7 @@ router.post("/generate-looks", requireAuth, requirePro, async (req: Request, res
       skinTone:            string;
       hairRecommendations: string[];
       outfitStyle:         string;
+      colorPalette?:       string[];
     };
     occasion?: string;
   };
@@ -142,27 +143,28 @@ router.post("/generate-looks", requireAuth, requirePro, async (req: Request, res
     return;
   }
 
-  const { faceShape, skinTone, hairRecommendations = [], outfitStyle = "" } = analysis;
+  const { faceShape, skinTone, hairRecommendations = [], outfitStyle = "", colorPalette = [] } = analysis;
+  const paletteStr = colorPalette.slice(0, 3).join(", ") || skinTone;
 
   const items: { name: string; prompt: string }[] = [];
 
-  // 2 hair looks (top 2 recommendations)
+  // 2 hair looks — chosen specifically to flatter the face shape
   for (const style of hairRecommendations.slice(0, 2)) {
     items.push({
       name: style,
-      prompt: `Keep the exact same person, face, identity, and facial structure from the input image. Only change the hairstyle to: ${style}. Maintain: same jawline, same eyes, same nose, same lips, same skin tone (${skinTone}). Style: professional beauty portrait, studio lighting, ultra realistic, 4K.`,
+      prompt: `Transform this exact person's hairstyle to "${style}", which is specifically recommended for a ${faceShape} face shape because it perfectly frames and enhances their facial features. The new hairstyle must make this person look more attractive and beautiful by complementing their ${faceShape} face proportions. Keep every facial feature absolutely identical: same eyes, nose, lips, jawline, skin tone (${skinTone}), and face structure. Result should look like a professional beauty editorial photo with perfect studio lighting, ultra realistic, 4K.`,
     });
   }
 
-  // 2 outfit looks — same base style, different color/silhouette variation
+  // 2 outfit looks — colors from personal palette to match skin tone
   if (outfitStyle) {
     items.push({
       name: "Outfit Look 1",
-      prompt: `Keep the exact same person and face identity from the input image. Only change clothing to: ${outfitStyle}, suitable for ${occasion}. Do NOT change face shape (${faceShape}) or facial features. Style: full body fashion photography, studio lighting, realistic, editorial.`,
+      prompt: `Dress this exact person in a stylish ${outfitStyle} outfit for ${occasion}, using colors from their personal color palette: ${paletteStr}. These colors are chosen because they harmonize beautifully with their ${skinTone} skin tone, making them look radiant and put-together. Keep every facial feature exactly the same. Full body fashion photography, studio lighting, high-end editorial, ultra realistic.`,
     });
     items.push({
       name: "Outfit Look 2",
-      prompt: `Keep the exact same person and face identity from the input image. Only change clothing to a different color or silhouette variation of: ${outfitStyle}, suitable for ${occasion}. Do NOT change face shape (${faceShape}) or facial features. Style: full body fashion photography, natural lighting, realistic, modern.`,
+      prompt: `Dress this exact person in an alternative ${outfitStyle} ensemble for ${occasion}, using a different combination of their personal colors: ${paletteStr}. Pick a different silhouette or layering but keep the same color harmony with their ${skinTone} skin tone. Keep every facial feature exactly the same. Full body fashion photography, natural soft lighting, modern editorial, ultra realistic.`,
     });
   }
 
