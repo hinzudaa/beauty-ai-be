@@ -1,8 +1,8 @@
 import { Router, Request, Response } from "express";
-import OpenAI from "openai";
+import OpenAI, { toFile } from "openai";
 import { v2 as cloudinary } from "cloudinary";
 import { config } from "../config";
-import { requireAuth, requireAccess } from "../middleware/auth";
+import { requireAuth, requireAccess, requirePro } from "../middleware/auth";
 import { User } from "../models/user";
 import { UsageLog } from "../models/usageLog";
 import { Analysis } from "../models/analysis";
@@ -110,7 +110,7 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
      occasion: string
    }
 ══════════════════════════════════════════════════════════════════ */
-router.post("/generate-looks", requireAuth, async (req: Request, res: Response) => {
+router.post("/generate-looks", requireAuth, requirePro, async (req: Request, res: Response) => {
   const { imageUrl, analysisId, analysis, occasion = "casual" } = req.body as {
     imageUrl?:   string;
     analysisId?: string;
@@ -159,36 +159,61 @@ Style: full body fashion photography, studio lighting, realistic, high-end edito
   }
 
   try {
-    // Fetch original selfie as Blob for the image editing API
-    const selfieBlob = await fetch(imageUrl).then((r) => r.blob());
+    // Fetch the selfie and convert to a proper File object for OpenAI
+    const selfieArrayBuffer = await fetch(imageUrl).then((r) => r.arrayBuffer());
+    const selfieBuffer = Buffer.from(new Uint8Array(selfieArrayBuffer));
+    const selfieFile = await toFile(selfieBuffer, "selfie.png", { type: "image/png" });
 
     const looks = await Promise.all(
       items.map(async (item) => {
         const response = await openai.images.edit({
-          model:  "gpt-image-1",          // identity-preserving image model
-          image:  selfieBlob as File,      // original selfie input
+          model:  "gpt-image-1",
+          image:  selfieFile,
           prompt: item.prompt,
           size:   "1024x1024",
+          // Note: gpt-image-1 does NOT support response_format param
+          // It returns b64_json by default
         });
 
-        const tempUrl = response.data?.[0]?.url;
-        if (!tempUrl) throw new Error("gpt-image-1 returned no URL");
+        // Handle both URL and base64 response formats
+        const resp = response as { data?: Array<{ url?: string; b64_json?: string }> };
+        const imageData = resp.data?.[0];
+        let permanentUrl: string;
 
-        // Persist to Cloudinary (URLs may expire)
-        const permanentUrl = await saveToCDN(tempUrl);
+        if (imageData?.url) {
+          permanentUrl = await saveToCDN(imageData.url);
+        } else if (imageData?.b64_json) {
+          // Upload base64 directly to Cloudinary
+          permanentUrl = await new Promise<string>((resolve, reject) => {
+            cloudinary.uploader.upload(
+              `data:image/png;base64,${imageData.b64_json}`,
+              { folder: "looka/looks", resource_type: "image" },
+              (err, result) => {
+                if (err || !result) return reject(err ?? new Error("CDN upload failed"));
+                resolve(result.secure_url);
+              }
+            );
+          });
+        } else {
+          throw new Error("gpt-image-1 returned no image data");
+        }
+
         return { name: item.name, imageUrl: permanentUrl };
       })
     );
 
-    // Save generated looks back to the Analysis document
     if (analysisId) {
       Analysis.findByIdAndUpdate(analysisId, { looks }).catch(() => {});
     }
 
     res.json({ looks });
   } catch (err) {
-    console.error("[analyze/generate-looks]", err instanceof Error ? err.message : err);
-    res.status(500).json({ error: "Look зураг үүсгэхэд алдаа гарлаа" });
+    // Log the full error so we can debug
+    console.error("[analyze/generate-looks] FULL ERROR:", err);
+    res.status(500).json({
+      error: "Look зураг үүсгэхэд алдаа гарлаа",
+      detail: err instanceof Error ? err.message : String(err),
+    });
   }
 });
 
