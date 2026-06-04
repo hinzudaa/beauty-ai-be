@@ -39,6 +39,7 @@ router.get("/", requireAuth, async (req: Request, res: Response) => {
       monthlyUsage:   sub.monthlyUsage,
       usageLimit:     sub.plan === "pro" ? 10 : sub.plan === "standard" ? 10 : 5,
       usageRemaining: Math.max(0, (sub.plan === "pro" ? 10 : sub.plan === "standard" ? 10 : 5) - sub.monthlyUsage),
+      usageResetAt:   sub.usageResetAt,
     } : null,
     payments: payments.map((p) => ({
       invoiceId: p.invoiceId,
