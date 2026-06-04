@@ -17,8 +17,8 @@ const PLAN_DEFAULTS: Record<string, number> = {
 
 const PLAN_DESC: Record<string, string> = {
   basic:    "Looka — Basic захиалга (сард 5 шинжилгээ · 2 AI look)",
-  standard: "Looka — Standard захиалга (сард 10 шинжилгээ · 3 AI look)",
-  pro:      "Looka — Pro захиалга (сард 20 шинжилгээ · 5 AI look + Chat)",
+  standard: "Looka — Standard захиалга (сард 10 шинжилгээ · 2 AI look)",
+  pro:      "Looka — Pro захиалга (сард 10 шинжилгээ · 4 AI look + Chat)",
 };
 
 const MS_30 = 30 * 24 * 60 * 60 * 1000;

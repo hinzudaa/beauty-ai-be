@@ -174,7 +174,11 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
   // Check user's plan
   const user = await User.findById(req.userId);
   const plan = user?.subscription?.plan ?? "basic";
-  const isPro = plan === "pro";
+  const isPro       = plan === "pro";
+  const isStandard  = plan === "standard";
+  // Basic: 1 hair + 1 outfit = 2 images
+  // Standard: 1 hair + 1 outfit = 2 images
+  // Pro: 2 hair + 1 outfit + 1 outfit2 = 4 images
 
   // ── STRICT RULES FOR ALL PROMPTS ──────────────────────────────
   // ✗ NEVER mention colorPalette, hex codes, or skin tone — these cause color leaking
@@ -213,7 +217,7 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
     });
   }
 
-  // Pro: second hair variation
+  // Pro image 3: second hair variation
   if (isPro && hairRecommendations[1]) {
     items.push({
       name: hairRecommendations[1],
@@ -221,21 +225,14 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
     });
   }
 
-  // Pro: second outfit variation
+  // Pro image 4: second outfit variation
   if (isPro && outfitStyle) {
     items.push({
       name: "Outfit Look 2",
       prompt: `The same ${personStr} from the input photo wearing an alternative ${outfitStyle} look for ${occasion} with a different silhouette. Only the clothing changes. Athletic symmetrical body. ${outfitAesthetic}. Natural soft daylight, cinematic color grade, full body shot, centered, 85mm lens f/2.0, ultra photorealistic, 8K, masterpiece fashion editorial.`,
     });
   }
-
-  // Pro bonus
-  if (isPro) {
-    items.push({
-      name: "Casual Look",
-      prompt: `The same person from the input photo. Wearing a stylish casual outfit for ${occasion}. Only the clothing is changed. Professional studio: clean background, natural soft lighting, sharp focus, photorealistic, 8K.`,
-    });
-  }
+  // Pro total: 4 images (2 hair + 2 outfit)
 
   try {
     // Run sequentially — fal.ai handles concurrency internally
