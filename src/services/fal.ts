@@ -14,16 +14,10 @@ export async function generateWithInstantID(
   faceImageUrl: string,
   prompt:       string
 ): Promise<string> {
-  const raw = await fal.subscribe("fal-ai/instantid", {
+  const raw = await fal.subscribe("fal-ai/nano-banana-2/edit", {
     input: {
-      face_image_url:                faceImageUrl,
+      image_urls: [faceImageUrl],
       prompt,
-      negative_prompt:               "deformed, ugly, blurry, low quality, bad anatomy, extra limbs, disfigured, same hair, unchanged hair, no hairstyle change",
-      num_inference_steps:           40,
-      guidance_scale:                7.5,   // higher = follows prompt more strictly
-      controlnet_conditioning_scale: 0.7,   // slightly lower = allows more style change
-      ip_adapter_scale:              0.8,   // keep face identity
-      image_size:                    "square_hd",
     },
   });
 

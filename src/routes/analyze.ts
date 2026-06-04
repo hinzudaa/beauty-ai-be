@@ -29,6 +29,7 @@ const LOOKSMAX_PROMPT = [
   "  - Оноо 0.5 нарийвчлалтай. Нүүрний тэгш хэм, алтан пропорц, арьс, нас харгалз.",
   "",
   "{",
+  '  "gender": "Зургаас харж тодорхойлсон хүйс: male эсвэл female",',
   '  "faceShape": "Нүүрний хэлбэр (Зууван / Дугуй / Дөрвөлжин / Зүрх / Алмаз / Урт)",',
   '  "lookmaxScore": 5.5,',
   "",
@@ -40,9 +41,9 @@ const LOOKSMAX_PROMPT = [
   '    "lips":    "Уруулын Cupid\'s bow, philtrum, дүүрэн байдал — эрчим, илэрхийлэл"',
   "  },",
   "",
-  '  "skinTone": "Арьсны тон (жишээ: Дулаан алт, Хүйтэн цайвар, Нейтрал олива)",',
-  '  "undertone": "Арьсны далд дулаан/хүйтэн тон (Warm / Cool / Neutral) — ихэнх хүн мэддэггүй өөрийнхөө undertone",',
-  '  "seasonalColor": "Өнгөний улирал (Spring / Summer / Autumn / Winter) — ямар өнгийн хувцас хамгийн их гэрэлтүүлдэг",',
+  '  "skinTone": "Зургаас ШУУД уншсан арьсны бодит өнгө — Fitzpatrick scale (I–VI) болон тодорхой тайлбар. Жишээ: Fitzpatrick II, цайвар-дулаан зааглалтай, нүүрний хацар болон хүзүүний өнгийг харьцуулж тодорхойл",',
+  '  "undertone": "Зургаас ШУУД уншсан undertone — судсыг (хөх=cool, ногоон=warm), мөн нүүрний сүүдрийн өнгийг харж тодорхойл (Warm / Cool / Neutral)",',
+  '  "seasonalColor": "skinTone болон undertone-д үндэслэсэн seasonal color (Spring / Summer / Autumn / Winter) — хамгийн тохирох өнгийн улирал",',
   "",
   '  "hiddenStrengths": [',
   '    "Хүмүүс өөрсдөө анзаардаггүй гэхдээ бусад нь анзаардаг 2–3 онцлог тал — маш тодорхой, лавтай"',
@@ -56,6 +57,11 @@ const LOOKSMAX_PROMPT = [
   '  "hairRecommendations": ["Нүүрний хэлбэрт тохирсон 3 үс засалтын нэр"],',
   '  "outfitStyle": "Undertone болон seasonal color-д үндэслэсэн хувцасны зөвлөмж — ямар өнгийн хослол хамгийн их гэрэлтүүлэх",',
   '  "colorPalette": ["#hex1", "#hex2", "#hex3", "#hex4", "#hex5"]',
+  "  // colorPalette: зургаас шууд харж тодорхойлсон ЯГГҮЙ 5 өнгө —",
+  "  // 1-р өнгө: арьсны бодит hex өнгө (зургаас пиксел унших),",
+  "  // 2-3-р өнгө: арьсны undertone-д хамгийн зохирох хувцасны өнгө,",
+  "  // 4-5-р өнгө: нэмэлт аксессуар болон нийлдэг өнгө.",
+  "  // Зургийг анхааралтай харж ЯГГҮЙ hex кодуудыг гарга — ойролцоо биш.",
   "}",
   "",
   "hiddenStrengths: хүмүүст шинэ зүйл нээж өгөх — 'Таны нүд ийм онцлогтой' гэх мэт мэдрэмжтэй байх.",
@@ -144,6 +150,7 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
     imageUrl?:   string;
     analysisId?: string;
     analysis?: {
+      gender?:             string;
       faceShape:           string;
       skinTone:            string;
       hairRecommendations: string[];
@@ -159,10 +166,14 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
   }
 
   const {
+    gender = "female",
     faceShape,
     hairRecommendations = [],
     outfitStyle = "",
   } = analysis;
+
+  const isMale    = gender?.toLowerCase() === "male";
+  const personStr = isMale ? "young man" : "young woman";
 
   // Check user's plan
   const user = await User.findById(req.userId);
@@ -176,20 +187,33 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
   // ─────────────────────────────────────────────────────────────
   const items: { name: string; prompt: string }[] = [];
 
-  // IMAGE 1 — Hair only: change hairstyle, everything else untouched
+  // IMAGE 1 — Hairstyle: cinematic close-up portrait, face is the focus
   const topHair = hairRecommendations[0];
   if (topHair) {
     items.push({
       name: topHair,
-      prompt: `The same person from the input photo, but with a ${topHair} hairstyle. Only the hairstyle is changed. Do NOT change the face, skin, clothing, background, or lighting. Beauty portrait, soft studio lighting, photorealistic.`,
+      prompt: `The same ${personStr} from the input photo with a ${topHair} hairstyle. Close-up portrait focused on the face and hair. Same face, same skin, same features — only the hairstyle changes. Golden hour warm light hitting one side of the face, soft bokeh background, natural skin texture, sharp eyes, cinematic color grade with warm tones. Professional 85mm lens, f/1.4 shallow depth of field, ultra realistic, photorealistic, 8K resolution, masterpiece portrait photography.`,
     });
   }
 
-  // IMAGE 2 — Outfit only: change clothing, everything else untouched
+  // Determine outfit aesthetic — shared across both outfit prompts
+  const combined        = (outfitStyle + " " + occasion).toLowerCase();
+  const oldMoneyWords   = ["хар", "саарал", "navy", "classic", "formal", "tailored", "blazer", "elegant", "ёслол", "хурим", "ажлын", "хуяг", "дунд оны"];
+  const luxuryWords     = ["casual", "street", "urban", "modern", "trendy", "өдөр тутам", "энгийн", "party", "sport", "хийморь"];
+  const formalOccasions = ["interview", "wedding", "formal", "ёслол"];
+  const matchesOld      = oldMoneyWords.some((k) => combined.includes(k)) || formalOccasions.some((k) => combined.includes(k));
+  const matchesLuxury   = luxuryWords.some((k) => combined.includes(k));
+  const outfitAesthetic = (matchesOld && !matchesLuxury)
+    ? "old money aesthetic, timeless quiet luxury, understated elegance, minimal refined style"
+    : "luxury lifestyle photography, modern premium fashion, elevated contemporary style";
+
+  // IMAGE 2 — Outfit
   if (outfitStyle) {
+    const aesthetic = outfitAesthetic;
+
     items.push({
       name: "Outfit Look",
-      prompt: `The same person from the input photo, wearing ${outfitStyle} suitable for ${occasion}. Only the clothing is changed. Do NOT change the face, skin, hair, or background. Full body, standing pose, professional fashion photography, photorealistic.`,
+      prompt: `The same ${personStr} from the input photo wearing ${outfitStyle} for ${occasion}. Only the clothing changes — same face, same features. Athletic symmetrical body, confident posture. ${aesthetic}. Natural soft daylight, cinematic color grade, fashion editorial style, realistic skin texture, shallow depth of field. Full body shot, centered composition, 85mm lens f/2.0, ultra photorealistic, professional fashion shoot, high detail, elegant urban atmosphere, 8K, masterpiece.`,
     });
   }
 
@@ -197,7 +221,7 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
   if (isPro && hairRecommendations[1]) {
     items.push({
       name: hairRecommendations[1],
-      prompt: `The same person from the input photo, but with a ${hairRecommendations[1]} hairstyle. Only the hairstyle is changed. Do NOT change the face, skin, clothing, or background. Beauty portrait, photorealistic.`,
+      prompt: `The same ${personStr} from the input photo with a ${hairRecommendations[1]} hairstyle. Close-up portrait focused on face and hair. Same face, same skin — only the hairstyle changes. Soft studio lighting, natural skin texture, sharp eyes, cinematic color grade, shallow depth of field. Ultra realistic, photorealistic, 8K, masterpiece portrait photography.`,
     });
   }
 
@@ -205,7 +229,7 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
   if (isPro && outfitStyle) {
     items.push({
       name: "Outfit Look 2",
-      prompt: `The same person from the input photo, wearing a different ${outfitStyle} style for ${occasion}. Only the clothing is changed. Do NOT change the face, skin, or hair. Full body, standing pose, professional fashion photography, photorealistic.`,
+      prompt: `The same ${personStr} from the input photo wearing an alternative ${outfitStyle} look for ${occasion} with a different silhouette. Only the clothing changes. Athletic symmetrical body. ${outfitAesthetic}. Natural soft daylight, cinematic color grade, full body shot, centered, 85mm lens f/2.0, ultra photorealistic, 8K, masterpiece fashion editorial.`,
     });
   }
 
@@ -213,7 +237,7 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
   if (isPro) {
     items.push({
       name: "Casual Look",
-      prompt: `The same person from the input photo, wearing a casual everyday outfit for ${occasion}. Only the clothing is changed. Do NOT change the face, skin, or hair. Full body, natural lighting, photorealistic.`,
+      prompt: `The same person from the input photo. Wearing a stylish casual outfit for ${occasion}. Only the clothing is changed. Professional studio: clean background, natural soft lighting, sharp focus, photorealistic, 8K.`,
     });
   }
 
