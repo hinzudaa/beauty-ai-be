@@ -71,7 +71,7 @@ export async function requireAccess(
     sub.monthlyUsage = 0;
   }
 
-  const limit = sub.plan === "pro" ? 40 : 20;
+  const limit = sub.plan === "pro" ? 20 : 5;
   if (sub.monthlyUsage >= limit) {
     res.status(402).json({
       error: "usageLimitReached",

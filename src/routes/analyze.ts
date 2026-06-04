@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
-import OpenAI, { toFile } from "openai";
+import OpenAI from "openai";
+import { generateWithInstantID } from "../services/fal";
 import { v2 as cloudinary } from "cloudinary";
 import { config } from "../config";
 import { requireAuth, requireAccess, requirePro } from "../middleware/auth";
@@ -124,7 +125,7 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
      occasion: string
    }
 ══════════════════════════════════════════════════════════════════ */
-router.post("/generate-looks", requireAuth, requirePro, async (req: Request, res: Response) => {
+router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, res: Response) => {
   const { imageUrl, analysisId, analysis, occasion = "casual" } = req.body as {
     imageUrl?:   string;
     analysisId?: string;
@@ -143,74 +144,71 @@ router.post("/generate-looks", requireAuth, requirePro, async (req: Request, res
     return;
   }
 
-  const { faceShape, skinTone, hairRecommendations = [], outfitStyle = "", colorPalette = [] } = analysis;
-  const paletteStr = colorPalette.slice(0, 3).join(", ") || skinTone;
+  const {
+    faceShape,
+    skinTone,
+    hairRecommendations = [],
+    outfitStyle = "",
+    colorPalette = [],
+    features = {} as Record<string, string>,
+  } = analysis as typeof analysis & { features?: Record<string, string> };
+
+  const paletteStr  = colorPalette.slice(0, 3).join(", ") || skinTone;
+
+  // Check user's plan to decide how many looks to generate
+  const user = await User.findById(req.userId);
+  const isPro = user?.subscription?.plan === "pro";
+
+  // Basic: 1 hair + 1 outfit = 2 images
+  // Pro:   2 hair + 2 outfit + 1 bonus = 5 images
+  const hairCount   = isPro ? 2 : 1;
+  const outfitCount = isPro ? 2 : 1;
 
   const items: { name: string; prompt: string }[] = [];
 
-  // 2 hair looks — chosen specifically to flatter the face shape
-  for (const style of hairRecommendations.slice(0, 2)) {
+  // Hair looks
+  for (const style of hairRecommendations.slice(0, hairCount)) {
     items.push({
       name: style,
-      prompt: `Transform this exact person's hairstyle to "${style}", which is specifically recommended for a ${faceShape} face shape because it perfectly frames and enhances their facial features. The new hairstyle must make this person look more attractive and beautiful by complementing their ${faceShape} face proportions. Keep every facial feature absolutely identical: same eyes, nose, lips, jawline, skin tone (${skinTone}), and face structure. Result should look like a professional beauty editorial photo with perfect studio lighting, ultra realistic, 4K.`,
+      prompt: `${style} hairstyle, ${skinTone} skin, ${faceShape} face shape, beauty portrait, studio lighting, photorealistic, high quality`,
     });
   }
 
-  // 2 outfit looks — colors from personal palette to match skin tone
+  // Outfit looks
   if (outfitStyle) {
     items.push({
-      name: "Outfit Look 1",
-      prompt: `Dress this exact person in a stylish ${outfitStyle} outfit for ${occasion}, using colors from their personal color palette: ${paletteStr}. These colors are chosen because they harmonize beautifully with their ${skinTone} skin tone, making them look radiant and put-together. Keep every facial feature exactly the same. Full body fashion photography, studio lighting, high-end editorial, ultra realistic.`,
+      name: "Outfit Look",
+      prompt: `${outfitStyle} outfit, colors ${paletteStr}, suitable for ${occasion}, ${skinTone} skin, full body fashion photography, studio lighting, photorealistic, high quality`,
     });
+    if (isPro) {
+      items.push({
+        name: "Outfit Look 2",
+        prompt: `alternative ${outfitStyle} outfit, different color variation from ${paletteStr}, suitable for ${occasion}, ${skinTone} skin, full body fashion photography, natural lighting, photorealistic, high quality`,
+      });
+    }
+  }
+
+  // Pro bonus: casual everyday look
+  if (isPro) {
     items.push({
-      name: "Outfit Look 2",
-      prompt: `Dress this exact person in an alternative ${outfitStyle} ensemble for ${occasion}, using a different combination of their personal colors: ${paletteStr}. Pick a different silhouette or layering but keep the same color harmony with their ${skinTone} skin tone. Keep every facial feature exactly the same. Full body fashion photography, natural soft lighting, modern editorial, ultra realistic.`,
+      name: "Casual Look",
+      prompt: `casual everyday outfit using colors ${paletteStr}, complementing ${skinTone} skin tone, comfortable modern style, ${skinTone} skin, full body fashion photography, natural lighting, photorealistic, high quality`,
     });
   }
 
   try {
-    // Fetch the selfie and convert to a proper File object for OpenAI
-    const selfieArrayBuffer = await fetch(imageUrl).then((r) => r.arrayBuffer());
-    const selfieBuffer = Buffer.from(new Uint8Array(selfieArrayBuffer));
-    const selfieFile = await toFile(selfieBuffer, "selfie.png", { type: "image/png" });
+    // Run sequentially — fal.ai handles concurrency internally
+    const looks: Array<{ name: string; imageUrl: string }> = [];
 
-    const looks = await Promise.all(
-      items.map(async (item) => {
-        const response = await openai.images.edit({
-          model:  "gpt-image-1",
-          image:  selfieFile,
-          prompt: item.prompt,
-          size:   "1024x1024",
-          // Note: gpt-image-1 does NOT support response_format param
-          // It returns b64_json by default
-        });
+    for (const item of items) {
+      // fal.ai InstantID: takes the Cloudinary selfie URL as face reference
+      // → generates the SAME person with only hair/outfit changed
+      const falUrl = await generateWithInstantID(imageUrl, item.prompt);
 
-        // Handle both URL and base64 response formats
-        const resp = response as { data?: Array<{ url?: string; b64_json?: string }> };
-        const imageData = resp.data?.[0];
-        let permanentUrl: string;
-
-        if (imageData?.url) {
-          permanentUrl = await saveToCDN(imageData.url);
-        } else if (imageData?.b64_json) {
-          // Upload base64 directly to Cloudinary
-          permanentUrl = await new Promise<string>((resolve, reject) => {
-            cloudinary.uploader.upload(
-              `data:image/png;base64,${imageData.b64_json}`,
-              { folder: "looka/looks", resource_type: "image" },
-              (err, result) => {
-                if (err || !result) return reject(err ?? new Error("CDN upload failed"));
-                resolve(result.secure_url);
-              }
-            );
-          });
-        } else {
-          throw new Error("gpt-image-1 returned no image data");
-        }
-
-        return { name: item.name, imageUrl: permanentUrl };
-      })
-    );
+      // Save to Cloudinary for permanence (fal.ai URLs may expire)
+      const permanentUrl = await saveToCDN(falUrl);
+      looks.push({ name: item.name, imageUrl: permanentUrl });
+    }
 
     if (analysisId) {
       Analysis.findByIdAndUpdate(analysisId, { looks }).catch(() => {});

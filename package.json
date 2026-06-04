@@ -26,6 +26,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@fal-ai/client": "^1.10.1",
     "@google/generative-ai": "^0.24.1",
     "cloudinary": "^2.10.0",
     "cors": "^2.8.6",

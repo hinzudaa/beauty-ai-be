@@ -34,6 +34,9 @@ export const config = {
     invoiceCode: required("QPAY_INVOICE_CODE"),
     amount:      parseInt(process.env.QPAY_AMOUNT ?? "1000", 10),
   },
+  fal: {
+    key: process.env.FAL_KEY ?? "",
+  },
   cloudinary: {
     cloudName:  required("CLOUDINARY_CLOUD_NAME"),
     apiKey:     required("CLOUDINARY_API_KEY"),
