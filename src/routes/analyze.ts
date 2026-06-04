@@ -55,7 +55,7 @@ const LOOKSMAX_PROMPT = [
   "",
   '  "makeupTips": "Энэ хүний нүүрний хэлбэр, онцлогт тохирсон 1–2 нүүр будалтын конкрет зөвлөгөө (жишээ: contour хаана хэрэглэх, ямар lip color тохирох)",',
   '  "hairRecommendations": [',
-  '    "Энэ хүний нүүрний хэлбэр, хацрын шугам, нүдний байрлал, эрүүний тэнцвэрийг харгалзан хамгийн хөөрхөн, царайлаг, гоёмсог харагдуулах 3 үс засалтын НЭР — загвар журналын cover photo-д тохирох чанартай. Зөвхөн үс засалтын нэрийг монгол болон англи хэлний хосолсон богино нэрээр бич.",',
+  '    "Энэ хүний нүүрний хэлбэрт хамгийн тохирох 3 СОЛОНГОС үс засалтын нэр — K-pop болон K-drama загварт суурилсан. Зөвхөн солонгос үс засалт (Korean hairstyle) сонго. Үс засалтын нэрийг монгол болон англи хэлний хосолсон богино нэрээр бич. Жишээ: Two-block cut, Comma hair, Curtain bangs, Wolf cut гэх мэт солонгос трэнд.",',
   '  ],',
   '  "outfitStyle": "Undertone болон seasonal color-д үндэслэсэн хувцасны зөвлөмж — ямар өнгийн хослол хамгийн их гэрэлтүүлэх",',
   '  "colorPalette": ["#hex1", "#hex2", "#hex3", "#hex4", "#hex5"]',
@@ -192,7 +192,7 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
   if (topHair) {
     items.push({
       name: topHair,
-      prompt: `The same ${personStr} from the input photo with a ${topHair} hairstyle. Close-up portrait focused on the face and hair. Same face, same skin, same features — only the hairstyle changes. Golden hour warm light hitting one side of the face, soft bokeh background, natural skin texture, sharp eyes, cinematic color grade with warm tones. Professional 85mm lens, f/1.4 shallow depth of field, ultra realistic, photorealistic, 8K resolution, masterpiece portrait photography.`,
+      prompt: `The same ${personStr} from the input photo with a Korean ${topHair} hairstyle. K-drama style hair, perfectly styled. Close-up portrait focused on the face and hair. Same face, same skin, same features — only the hairstyle changes. Golden hour warm light hitting one side of the face, soft bokeh background, natural skin texture, sharp eyes, cinematic color grade with warm tones. Professional 85mm lens, f/1.4 shallow depth of field, ultra realistic, photorealistic, 8K resolution, masterpiece portrait photography.`,
     });
   }
 
@@ -221,7 +221,7 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
   if (isPro && hairRecommendations[1]) {
     items.push({
       name: hairRecommendations[1],
-      prompt: `The same ${personStr} from the input photo with a ${hairRecommendations[1]} hairstyle. Close-up portrait focused on face and hair. Same face, same skin — only the hairstyle changes. Soft studio lighting, natural skin texture, sharp eyes, cinematic color grade, shallow depth of field. Ultra realistic, photorealistic, 8K, masterpiece portrait photography.`,
+      prompt: `The same ${personStr} from the input photo with a Korean ${hairRecommendations[1]} hairstyle. K-drama style hair, perfectly styled. Close-up portrait focused on face and hair. Same face, same skin — only the hairstyle changes. Soft studio lighting, natural skin texture, sharp eyes, cinematic color grade, shallow depth of field. Ultra realistic, photorealistic, 8K, masterpiece portrait photography.`,
     });
   }
 
