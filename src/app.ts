@@ -14,10 +14,14 @@ const app = express();
 const ALLOWED_ORIGINS = [
   // Local development
   /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,
-  // Production
+  // DigitalOcean default URL (used while DNS is being configured)
+  /^https:\/\/.*\.ondigitalocean\.app$/,
+  // Production custom domain
   "https://looka.beauty",
   "https://www.looka.beauty",
   "https://admin.looka.beauty",
+  // Vercel preview/production URLs
+  /^https:\/\/.*\.vercel\.app$/,
   // Extra origin from env (optional override)
   ...(process.env.ALLOWED_ORIGIN ? [process.env.ALLOWED_ORIGIN] : []),
 ];
