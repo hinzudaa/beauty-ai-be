@@ -1,5 +1,7 @@
 import { Router, Request, Response } from "express";
 import OpenAI from "openai";
+import { v2 as cloudinary } from "cloudinary";
+import { Readable } from "stream";
 import { config } from "../config";
 import { requireAuth, requireAccess } from "../middleware/auth";
 import { User } from "../models/user";
@@ -8,125 +10,144 @@ import { UsageLog } from "../models/usageLog";
 const router = Router();
 const openai = new OpenAI({ apiKey: config.openai.apiKey });
 
-/* ── Prompts ─────────────────────────────────────────────────────── */
-
-const FACE_PROMPT = `Энэ зурган дах хүний царайг шинжлээд зөвхөн дараах JSON форматаар хариул.
+/* ── Looksmaxxing analysis prompt ─────────────────────────────────
+   GPT-4o Vision reads the uploaded selfie and returns a structured
+   looksmaxxing report — face shape, feature breakdown, score,
+   strengths, improvement tips, and style recommendations.
+─────────────────────────────────────────────────────────────────── */
+const LOOKSMAX_PROMPT = `Та мэргэжлийн looksmaxxing AI юм. Энэ хүний нүүрийг шинжлээд зөвхөн дараах JSON форматаар хариул.
 Нэмэлт тайлбар, markdown оруулахгүй — зөвхөн JSON объект.
 
 {
-  "faceShape": "царайны хэлбэр монгол хэлээр (Зууван, Дугуй, Дөрвөлжин, Зүрх хэлбэрт, Алмаз, Урт гэснийн аль нэг)",
-  "skinTone": "арьсны тон монгол хэлээр (жишээ: Дулаан дунд, Хүйтэн цайвар, Нейтрал дунд гэх мэт)",
-  "styleType": "style төрөл монгол хэлээр (жишээ: Байгалийн минималист, Зоригтой класик, Нежный феминин гэх мэт)",
-  "recommendations": ["5 зөвлөмж монгол хэлээр — нүүрний хэлбэр, арьсны тонд тохирсон хувцас, гоо сайхан, аксессуарын зөвлөмж"],
+  "faceShape": "Нүүрний хэлбэр монгол хэлээр (Зууван / Дугуй / Дөрвөлжин / Зүрх / Алмаз / Урт)",
+  "lookmaxScore": 7.2,
+  "features": {
+    "eyes": "Нүдний хэлбэр, байршлын дүгнэлт",
+    "jawline": "Эрүүний хүч, тодорхойлолт",
+    "chin": "Эрүүний доор хэсгийн тэнцвэр",
+    "nose": "Хамрын пропорц, хэлбэр",
+    "lips": "Уруулын дүүрэн байдал, хэлбэр"
+  },
+  "skinTone": "Арьсны тон",
+  "strengths": ["3–4 хамгийн давуу тал"],
+  "improvements": [
+    "3–4 лooksmaxxing зөвлөмж — жишээ нь: mewing, skincare routine, хирурги биш аргаар сайжруулах"
+  ],
+  "hairRecommendations": ["Нүүрний хэлбэрт тохирсон 3 үс засалт монгол+англи хэлээр"],
+  "outfitStyle": "Физиологид тохирсон хувцасны ерөнхий зөвлөмж",
   "colorPalette": ["#hex1", "#hex2", "#hex3", "#hex4", "#hex5"]
 }
-colorPalette нь арьсны тонд тохирсон 5 өнгийн hex код байна.`;
 
-const HAIR_PROMPT = `Та hair stylist болон makeup artist юм. Зурган дах хүний нүүрийг шинжлээд монгол хэлээр хариул.
-Зөвхөн JSON, нэмэлт тайлбаргүй:
-{
-  "faceShape": "нүүрний хэлбэр монгол хэлээр",
-  "hair": [
-    { "name": "Үсний загварын нэр", "length": "Богино/Дунд/Урт", "desc": "Тайлбар монгол хэлээр" }
-  ],
-  "makeup": [
-    { "name": "Makeup look нэр", "desc": "Тайлбар монгол хэлээр", "colors": ["#hex1","#hex2","#hex3"] }
-  ]
-}
-hair: 4 загвар, makeup: 3 look санал өг.`;
+lookmaxScore: 1–10 оноо, нийт нүүрний хамгийн сайн дүн.
+improvements: практик, хирурги биш, монгол хэлээр.`;
 
-const outfitPrompt = (event: string, season: string) => `
-Та fashion stylist юм. Зурган дах хүний биеийн хэлбэр, арьсны тон, өнгөний онцлогийг харгалзан монгол хэлээр хариул.
-
-Event: ${event}
-Улирал: ${season}
-Style: Minimal
-
-Зурган дах хүнд тохирсон 2 outfit санал өг. Зөвхөн JSON, тайлбаргүй:
-{
-  "outfits": [
-    {
-      "name": "Outfit нэр",
-      "items": ["5 хувцасны зүйл монгол+англи хосолсон"],
-      "colors": ["#hex1", "#hex2", "#hex3"],
-      "tip": "Стилистийн зөвлөмж монгол хэлээр — хүний онцлогт тохируулсан"
-    }
-  ]
-}`.trim();
-
-function getSeason(): string {
-  const m = new Date().getMonth();
-  if (m >= 2 && m <= 4) return "Хавар";
-  if (m >= 5 && m <= 7) return "Зун";
-  if (m >= 8 && m <= 10) return "Намар";
-  return "Өвөл";
+/* ── Save a URL-based image to Cloudinary ─────────────────────────
+   DALL-E 3 returns temporary URLs — we save them permanently to CDN.
+─────────────────────────────────────────────────────────────────── */
+async function saveUrlToCloudinary(imageUrl: string, folder = "looka/looks"): Promise<string> {
+  return new Promise((resolve, reject) => {
+    cloudinary.uploader.upload(
+      imageUrl,
+      { folder, resource_type: "image" },
+      (err, result) => {
+        if (err || !result) return reject(err ?? new Error("Cloudinary upload failed"));
+        resolve(result.secure_url);
+      }
+    );
+  });
 }
 
 /* ── POST /analyze/full ───────────────────────────────────────────
-   Body: { url: string, event?: string }
-   url  — Cloudflare R2 CDN URL (or any public image URL)
-   Runs 3 AI analyses in parallel and counts as 1 subscription use.
+   1. GPT-4o Vision → full looksmaxxing analysis report (~5s)
+   2. Subscription usage incremented
 ─────────────────────────────────────────────────────────────────── */
 router.post("/full", requireAuth, requireAccess, async (req: Request, res: Response) => {
   const { url, event = "casual" } = req.body as { url?: string; event?: string };
 
   if (!url) {
-    res.status(400).json({ error: "url шаардлагатай (Cloudflare R2 CDN URL)" });
+    res.status(400).json({ error: "url шаардлагатай (Cloudinary CDN URL)" });
     return;
   }
 
-  const season     = getSeason();
-  const imgContent = {
-    type:      "image_url" as const,
-    image_url: { url, detail: "low" as const },   // OpenAI supports public URLs natively
-  };
-
   try {
-    const [faceComp, hairComp, outfitComp] = await Promise.all([
-      openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [{ role: "user", content: [imgContent, { type: "text", text: FACE_PROMPT }] }],
-        response_format: { type: "json_object" },
-        max_tokens: 600,
-      }),
-      openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [{ role: "user", content: [imgContent, { type: "text", text: HAIR_PROMPT }] }],
-        response_format: { type: "json_object" },
-        max_tokens: 800,
-      }),
-      openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [{ role: "user", content: [imgContent, { type: "text", text: outfitPrompt(event, season) }] }],
-        response_format: { type: "json_object" },
-        max_tokens: 800,
-      }),
-    ]);
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{
+        role: "user",
+        content: [
+          { type: "image_url", image_url: { url, detail: "high" } },
+          { type: "text", text: LOOKSMAX_PROMPT },
+        ],
+      }],
+      response_format: { type: "json_object" },
+      max_tokens: 1000,
+    });
 
-    const fc = faceComp.choices[0].message.content;
-    const hc = hairComp.choices[0].message.content;
-    const oc = outfitComp.choices[0].message.content;
+    const content = completion.choices[0].message.content;
+    if (!content) { res.status(500).json({ error: "AI хариу буцааж ирсэнгүй" }); return; }
 
-    if (!fc || !hc || !oc) {
-      res.status(500).json({ error: "AI хариу буцааж ирсэнгүй" });
-      return;
-    }
+    const analysis = JSON.parse(content);
 
-    const face   = JSON.parse(fc)  as Record<string, unknown>;
-    const hair   = JSON.parse(hc)  as Record<string, unknown>;
-    const outfit = JSON.parse(oc)  as { outfits?: unknown[] };
-
-    // Count once per session
+    // Count one subscription use
     const user = await User.findById(req.userId);
     if (user) {
       await User.findByIdAndUpdate(req.userId, { $inc: { "subscription.monthlyUsage": 1 } });
       UsageLog.create({ userId: user._id, phone: user.phone, feature: "full" }).catch(() => {});
     }
 
-    res.json({ face, hair, outfits: outfit.outfits ?? [], photoUrl: url });
+    res.json({ analysis, occasion: event });
   } catch (err) {
     console.error("[analyze/full] error:", err instanceof Error ? err.message : err);
     res.status(500).json({ error: "Шинжилгээ хийхэд алдаа гарлаа" });
+  }
+});
+
+/* ── POST /analyze/generate-looks ────────────────────────────────
+   DALL-E 3 generates look inspiration images based on the analysis.
+   Called right after /full — images load progressively in the UI.
+
+   Body: {
+     photoUrl: string,              — original selfie (used in prompt context)
+     items: Array<{ name, prompt }> — up to 6 looks
+   }
+─────────────────────────────────────────────────────────────────── */
+router.post("/generate-looks", requireAuth, async (req: Request, res: Response) => {
+  const { items } = req.body as {
+    items?: Array<{ name: string; prompt: string }>;
+  };
+
+  if (!Array.isArray(items) || items.length === 0) {
+    res.status(400).json({ error: "items шаардлагатай" });
+    return;
+  }
+
+  try {
+    // Generate all images in parallel (DALL-E 3 handles up to 5 concurrent requests)
+    const looks = await Promise.all(
+      items.slice(0, 6).map(async (item) => {
+        const response = await openai.images.generate({
+          model:   "dall-e-3",
+          prompt:  item.prompt,
+          n:       1,
+          size:    "1024x1024",
+          quality: "standard",
+        });
+
+        const tempUrl = response.data?.[0]?.url;
+        if (!tempUrl) throw new Error("DALL-E returned no image URL");
+        const tempUrlStr = tempUrl;
+
+        // Save to Cloudinary so the URL doesn't expire
+        const permanentUrl = await saveUrlToCloudinary(tempUrlStr);
+
+        return { name: item.name, imageUrl: permanentUrl };
+      })
+    );
+
+    res.json({ looks });
+  } catch (err) {
+    console.error("[analyze/generate-looks] error:", err instanceof Error ? err.message : err);
+    res.status(500).json({ error: "Look зураг үүсгэхэд алдаа гарлаа" });
   }
 });
 

@@ -24,9 +24,6 @@ export const config = {
     devBypass: process.env.VERIFY_MN_DEV_BYPASS === "true",
   },
   appBaseUrl: process.env.APP_BASE_URL ?? "",
-  openai: {
-    apiKey: required("OPENAI_API_KEY"),
-  },
   admin: {
     username: process.env.ADMIN_USERNAME ?? "admin",
     password: required("ADMIN_PASSWORD"),
@@ -41,5 +38,11 @@ export const config = {
     cloudName:  required("CLOUDINARY_CLOUD_NAME"),
     apiKey:     required("CLOUDINARY_API_KEY"),
     apiSecret:  required("CLOUDINARY_API_SECRET"),
+  },
+  openai: {
+    apiKey: required("OPENAI_API_KEY"),
+  },
+  hf: {
+    token: process.env.HF_TOKEN ?? "",   // optional now
   },
 };
