@@ -164,47 +164,56 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
     outfitStyle = "",
   } = analysis;
 
-  // Check user's plan to decide how many looks to generate
+  // Check user's plan
   const user = await User.findById(req.userId);
   const plan = user?.subscription?.plan ?? "basic";
+  const isPro = plan === "pro";
 
-  // Basic:    1 hair + 1 outfit = 2 images
-  // Standard: 1 hair + 2 outfit = 3 images
-  // Pro:      2 hair + 2 outfit + 1 bonus = 5 images
-  const hairCount = plan === "pro" ? 2 : 1;
-  const isPro     = plan === "pro";
-
+  // ── STRICT RULES FOR ALL PROMPTS ──────────────────────────────
+  // ✗ NEVER mention colorPalette, hex codes, or skin tone — these cause color leaking
+  // ✓ ONLY describe what to CHANGE: hairstyle OR outfit
+  // ✓ InstantID reads the face/skin directly from the input image — do not override it
+  // ─────────────────────────────────────────────────────────────
   const items: { name: string; prompt: string }[] = [];
 
-  // ── Hair looks — NO color palette, NO skin tone in prompt ──
-  // InstantID already reads skin tone from the input image.
-  // Prompt only describes the TARGET hairstyle to maximize change.
-  for (const style of hairRecommendations.slice(0, hairCount)) {
+  // IMAGE 1 — Hair only: change hairstyle, everything else untouched
+  const topHair = hairRecommendations[0];
+  if (topHair) {
     items.push({
-      name: style,
-      prompt: `A person with ${style} hairstyle. The hair is clearly changed to ${style}. ${faceShape} face. Beauty portrait, soft studio lighting, clean background, photorealistic, 4K. Focus on the hairstyle transformation.`,
+      name: topHair,
+      prompt: `The same person from the input photo, but with a ${topHair} hairstyle. Only the hairstyle is changed. Do NOT change the face, skin, clothing, background, or lighting. Beauty portrait, soft studio lighting, photorealistic.`,
     });
   }
 
-  // ── Outfit looks — describe clothing only, no color palette numbers ──
+  // IMAGE 2 — Outfit only: change clothing, everything else untouched
   if (outfitStyle) {
     items.push({
       name: "Outfit Look",
-      prompt: `Full body fashion photo. Person wearing ${outfitStyle}, appropriate for ${occasion}. Stylish, well-fitted clothing. Clean studio background, professional fashion photography, photorealistic, 4K. Show the full outfit clearly.`,
+      prompt: `The same person from the input photo, wearing ${outfitStyle} suitable for ${occasion}. Only the clothing is changed. Do NOT change the face, skin, hair, or background. Full body, standing pose, professional fashion photography, photorealistic.`,
     });
-    if (isPro) {
-      items.push({
-        name: "Outfit Look 2",
-        prompt: `Full body fashion photo. Person wearing a different variation of ${outfitStyle} for ${occasion}. Different silhouette or style. Clean studio background, professional fashion photography, photorealistic, 4K.`,
-      });
-    }
+  }
+
+  // Pro: second hair variation
+  if (isPro && hairRecommendations[1]) {
+    items.push({
+      name: hairRecommendations[1],
+      prompt: `The same person from the input photo, but with a ${hairRecommendations[1]} hairstyle. Only the hairstyle is changed. Do NOT change the face, skin, clothing, or background. Beauty portrait, photorealistic.`,
+    });
+  }
+
+  // Pro: second outfit variation
+  if (isPro && outfitStyle) {
+    items.push({
+      name: "Outfit Look 2",
+      prompt: `The same person from the input photo, wearing a different ${outfitStyle} style for ${occasion}. Only the clothing is changed. Do NOT change the face, skin, or hair. Full body, standing pose, professional fashion photography, photorealistic.`,
+    });
   }
 
   // Pro bonus
   if (isPro) {
     items.push({
       name: "Casual Look",
-      prompt: `Full body photo. Person wearing a casual everyday modern outfit suitable for ${occasion}. Comfortable and stylish. Clean background, natural lighting, photorealistic, 4K.`,
+      prompt: `The same person from the input photo, wearing a casual everyday outfit for ${occasion}. Only the clothing is changed. Do NOT change the face, skin, or hair. Full body, natural lighting, photorealistic.`,
     });
   }
 
