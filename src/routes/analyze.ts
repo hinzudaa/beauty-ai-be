@@ -26,12 +26,12 @@ const LOOKSMAX_PROMPT = [
   "ОНОО ТООЦООЛОХ ЗААВАР (заавал дагах):",
   "  - Хүн амын дундаж = 5.0",
   "  - 1–4: дундаас доош (30%), 4–6: дундаж (40%), 6–8: дэвшилтэт (25%), 8–10: ховор (5%)",
-  "  - Оноо 0.01 нарийвчлалтай (жишээ: 6.73, 7.42). Нүүрний тэгш хэм, алтан пропорц, арьс, нас харгалз.",
+  "  - Оноо 0–10 хязгаарт, 0.01 нарийвчлалтай (жишээ: 6.73, 7.42, 8.15). Дээд оноо = 10. Нүүрний тэгш хэм, алтан пропорц, арьс, нас харгалз.",
   "",
   "{",
   '  "gender": "Зургаас харж тодорхойлсон хүйс: male эсвэл female",',
-  '  "faceShape": "Нүүрний хэлбэрийг зургаас шууд шинжлэн тайлбарла — урьдчилан тодорхойлсон ангилалгүйгээр. Нүүрний өргөн/урт харьцаа, эрүүний шугам, хацрын өндрийг харьцуулж яггүй тодорхойлол. Жишээ: уртавтар нарийхан нүүр, доошоо нарийссан зүрх хэлбэртэй, дугуйвтар дэлгэр нүүр гэх мэт.",',
-  '  "lookmaxScore": 5.73,',
+  '  "faceShape": "Нүүрний хэлбэрийг зургаас шууд шинжлэн тайлбарла — урьдчилан тодорхойлсон ангилалгүйгээр. Нүүрний өргөн/урт харьцаа, эрүүний шугам, хацрын өндрийг харьцуулж яггүй тодорхойлох.,',
+  '  "lookmaxScore": 7.42,  // 0.00–10.00, 0.01 нарийвчлал, дээд тал 10',
   "",
   '  "features": {',
   '    "eyes":    "Нүдний хэлбэр, өнгө, тэгш хэм — хүмүүс өөрсдөө анзаардаггүй онцлог (жишээ: hooded eyelid, heterochromia, limbal ring гэх мэт)",',
@@ -121,7 +121,9 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
 
   try {
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model:           "gpt-4o-mini",
+      temperature:     0.2,   // low = consistent results across repeated calls
+      seed:            42,    // fixed seed for reproducibility
       messages: [{
         role: "user",
         content: [
@@ -130,7 +132,7 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
         ],
       }],
       response_format: { type: "json_object" },
-      max_tokens: 4000,   // hairRecommendations×10 + outfitStyle object needs ~2500+ tokens
+      max_tokens:      4000,
     });
 
     const content = completion.choices[0].message.content;
