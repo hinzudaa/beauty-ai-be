@@ -22,11 +22,17 @@ export async function generateWithInstantID(
   faceImageUrl: string,
   prompt:       string
 ): Promise<string> {
+  // Prepend face-lock instruction — nano-banana-2 has no separate strength/negative_prompt params
+  const safePrompt =
+    `Keep the person's face, skin tone, and facial features exactly the same. ` +
+    `Change only the hairstyle and outfit. ${prompt}`;
+
   const result = await withTimeout(
-    fal.subscribe("xai/grok-imagine-image/quality/edit", {
+    fal.subscribe("fal-ai/nano-banana-2/edit", {
       input: {
-        image_url: faceImageUrl,
-        prompt,
+        image_urls:    [faceImageUrl],
+        prompt:        safePrompt,
+        output_format: "jpeg",
       },
       logs: false,
     }),
@@ -34,8 +40,8 @@ export async function generateWithInstantID(
   );
 
   if (process.env.NODE_ENV !== "production") {
-    console.log("[fal/grok-imagine] requestId:", result.requestId);
-    console.log("[fal/grok-imagine] data keys:", Object.keys(result.data ?? {}));
+    console.log("[fal/nano-banana-2] requestId:", result.requestId);
+    console.log("[fal/nano-banana-2] data keys:", Object.keys(result.data ?? {}));
   }
 
   const data = result.data as Record<string, unknown>;
@@ -46,8 +52,8 @@ export async function generateWithInstantID(
     ?? (data?.["url"]    as string | undefined);
 
   if (!url) {
-    console.error("[fal/grok-imagine] unexpected data:", JSON.stringify(result.data).slice(0, 400));
-    throw new Error(`grok-imagine returned no image. data: ${JSON.stringify(result.data).slice(0, 200)}`);
+    console.error("[fal/nano-banana-2] unexpected data:", JSON.stringify(result.data).slice(0, 400));
+    throw new Error(`nano-banana-2 returned no image. data: ${JSON.stringify(result.data).slice(0, 200)}`);
   }
 
   return url;
