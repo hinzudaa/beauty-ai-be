@@ -309,35 +309,74 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
     : "K-Pop idol fashion editorial, premium Korean fashion magazine spread, confident model pose";
 
   const outfitAesthetic = ksName || outfitDesc || `${bestColor} Korean fashion`;
-  const style = isOldMoney ? "elegant quiet luxury" : isY2K ? "Y2K street" : "K-drama smart casual";
+  const vibe = isOldMoney
+    ? (isMale ? "Old Money Guy"    : "Old Money Vibes")
+    : isY2K
+    ? (isMale ? "Y2K Street Guy"   : "Y2K Street Vibes")
+    : isKdrama
+    ? "K-Drama Smart Casual"
+    : (isMale ? "K-Pop It Guy Vibes" : "K-Pop It Girl Vibes");
 
-  // Short, high-quality prompts — nano-banana processes faster with concise text
+  // Gender-specific moodboard labels & decorations
+  const isMaleGen  = isMale;
+  const decoColor  = isMaleGen ? "blue and black" : "pink and black";
+  const decoIcons  = isMaleGen ? "stars ★ lightning ⚡ crowns ♛" : "crowns ♛ hearts ♡ stars ★";
+  const beautyLbl  = isMaleGen ? "FACE FOCUS"    : "BEAUTY FOCUS";
+  const candLbl    = isMaleGen ? "COOL & RELAXED" : "CANDID / RELAXED";
+  const chibiLbl   = isMaleGen ? "CHIBI MASCOT"   : "CHIBI MASCOT";
+  const chibiStyle = isMaleGen
+    ? "cute chibi cartoon boy character same outfit same hair big eyes cool anime style"
+    : "cute chibi cartoon girl character same outfit same hair big eyes kawaii anime style";
+
+  // Moodboard collage prompt — matches the reference image layout
+  const collage = (subject: string, label: string) =>
+    `K-pop fashion moodboard collage, white background, 5 panels: ` +
+    `top-left ${beautyLbl.toLowerCase()} close-up portrait, top-right back view or profile, ` +
+    `center full body main look (largest panel), bottom-left candid relaxed ${isMaleGen ? "seated" : "posed"} pose, ` +
+    `bottom-right ${chibiStyle}. ` +
+    `${subject}. ` +
+    `${decoColor} decorative accents: ${decoIcons} between panels. ` +
+    `Handwritten text labels: "${beautyLbl}" "BACK VIEW / PROFILE" "${candLbl}" "${chibiLbl}" "MAIN LOOK: ${label}". ` +
+    `Photorealistic panels + chibi anime. High quality, clean white layout.`;
+
   const topHair = hairNames[0];
   if (topHair) {
     items.push({
       name: topHair,
-      prompt: `${personStr} with ${topHair} hairstyle. Same face. K-beauty portrait, soft studio light, high quality.`,
+      prompt: collage(
+        `Same ${personStr} with Korean ${topHair} hairstyle throughout all panels, same face`,
+        topHair.toUpperCase()
+      ),
     });
   }
 
   if (outfitDesc || outfitStyle) {
     items.push({
       name: "Outfit Look",
-      prompt: `${personStr} wearing ${outfitAesthetic}, ${style} style. Same face. Full body, clean background, high quality.`,
+      prompt: collage(
+        `Same ${personStr} wearing ${outfitAesthetic} throughout all panels, same face`,
+        vibe
+      ),
     });
   }
 
   if (isPro && hairNames[1]) {
     items.push({
       name: hairNames[1],
-      prompt: `${personStr} with ${hairNames[1]} hairstyle. Same face. Golden hour portrait, high quality.`,
+      prompt: collage(
+        `Same ${personStr} with Korean ${hairNames[1]} hairstyle throughout all panels, same face`,
+        hairNames[1].toUpperCase()
+      ),
     });
   }
 
   if (isPro && (outfitDesc || outfitStyle)) {
     items.push({
       name: "Street Look",
-      prompt: `${personStr} wearing ${outfitAesthetic} street outfit. Same face. Urban setting, full body, high quality.`,
+      prompt: collage(
+        `Same ${personStr} wearing ${outfitAesthetic} street style throughout all panels, same face`,
+        "STREET LOOK"
+      ),
     });
   }
 
