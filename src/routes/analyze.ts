@@ -184,7 +184,8 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
 
     // Update user's lookScore (best ever, 0–100) — avatarUrl updated in generate-looks
     const rawScore = typeof analysis.lookmaxScore === "number" ? analysis.lookmaxScore : 0;
-    const newScore = Math.round(rawScore * 10 * 10) / 10; // ×10, 1 decimal → 0–100
+    // Convert 0–10 GPT score → 0–100 with 2 decimal precision (e.g. 7.42 → 74.20)
+    const newScore = Math.round(rawScore * 10 * 100) / 100;
     const existing = await User.findById(req.userId).select("lookScore").lean();
     const bestScore = Math.max(newScore, existing?.lookScore ?? 0);
     User.findByIdAndUpdate(req.userId, { lookScore: bestScore }).catch(() => {});
