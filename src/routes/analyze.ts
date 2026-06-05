@@ -180,6 +180,13 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
       occasion: event,
     });
 
+    // Update user's lookScore (best ever, 0–100) — avatarUrl updated in generate-looks
+    const rawScore = typeof analysis.lookmaxScore === "number" ? analysis.lookmaxScore : 0;
+    const newScore = Math.round(rawScore * 10 * 10) / 10; // ×10, 1 decimal → 0–100
+    const existing = await User.findById(req.userId).select("lookScore").lean();
+    const bestScore = Math.max(newScore, existing?.lookScore ?? 0);
+    User.findByIdAndUpdate(req.userId, { lookScore: bestScore }).catch(() => {});
+
     res.json({ analysis, occasion: event, analysisId: String(saved._id) });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -345,21 +352,37 @@ Dynamic, confident, K-pop idol off-duty energy. Ultra photorealistic, 8K, editor
   // Pro total: 4 moodboard collage images
 
   try {
-    // Run sequentially — fal.ai handles concurrency internally
+    // Run ALL images in PARALLEL — much faster, 90s timeout each
+    const results = await Promise.allSettled(
+      items.map(async (item) => {
+        const falUrl      = await generateWithInstantID(imageUrl, item.prompt);
+        const permanentUrl = await saveToCDN(falUrl);
+        return { name: item.name, imageUrl: permanentUrl };
+      })
+    );
+
+    // Keep successful results, log failures
     const looks: Array<{ name: string; imageUrl: string }> = [];
+    for (const r of results) {
+      if (r.status === "fulfilled") {
+        looks.push(r.value);
+      } else {
+        console.error("[generate-looks] one image failed:", r.reason?.message ?? r.reason);
+      }
+    }
 
-    for (const item of items) {
-      // fal.ai InstantID: takes the Cloudinary selfie URL as face reference
-      // → generates the SAME person with only hair/outfit changed
-      const falUrl = await generateWithInstantID(imageUrl, item.prompt);
-
-      // Save to Cloudinary for permanence (fal.ai URLs may expire)
-      const permanentUrl = await saveToCDN(falUrl);
-      looks.push({ name: item.name, imageUrl: permanentUrl });
+    if (looks.length === 0) {
+      throw new Error("Бүх зураг үүсгэхэд алдаа гарлаа");
     }
 
     if (analysisId) {
       Analysis.findByIdAndUpdate(analysisId, { looks }).catch(() => {});
+    }
+
+    // Save first generated look as avatarUrl for leaderboard
+    const firstLookUrl = looks[0]?.imageUrl;
+    if (firstLookUrl) {
+      User.findByIdAndUpdate(req.userId, { avatarUrl: firstLookUrl }).catch(() => {});
     }
 
     // Increment monthlyUsage only after looks are successfully generated

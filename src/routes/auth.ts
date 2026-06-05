@@ -19,8 +19,15 @@ function phoneValid(phone: string): boolean {
   return /^\d{8,16}$/.test(phone);
 }
 
-function userPayload(user: { _id: unknown; phone: string; phoneVerified: boolean }) {
-  return { id: user._id, phone: user.phone, phoneVerified: user.phoneVerified };
+function userPayload(user: { _id: unknown; phone: string; phoneVerified: boolean; username?: string; lookScore?: number | null; avatarUrl?: string }) {
+  return {
+    id:            user._id,
+    phone:         user.phone,
+    phoneVerified: user.phoneVerified,
+    username:      user.username ?? null,
+    lookScore:     user.lookScore ?? null,
+    avatarUrl:     user.avatarUrl ?? null,
+  };
 }
 
 async function findOrCreateUser(phone: string) {
@@ -199,11 +206,50 @@ router.get("/callback/:callbackToken", async (req: Request, res: Response) => {
 
 router.get("/me", requireAuth, async (req: Request, res: Response) => {
   const user = await User.findById(req.userId);
-  if (!user) {
-    res.status(404).json({ error: "User not found" });
-    return;
-  }
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
   res.json(userPayload(user));
+});
+
+/* ── GET /auth/check-username/:username ── check availability */
+router.get("/check-username/:username", requireAuth, async (req: Request, res: Response) => {
+  const username = String(req.params.username ?? "");
+  if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
+    res.status(400).json({ error: "3–20 тэмдэгт, зөвхөн үсэг/тоо/_" }); return;
+  }
+  const existing = await User.findOne({ username });
+  const taken = existing && String(existing._id) !== req.userId;
+  res.json({ available: !taken });
+});
+
+/* ── POST /auth/username ── set or update username (1 month cooldown) */
+router.post("/username", requireAuth, async (req: Request, res: Response) => {
+  const { username } = req.body as { username?: string };
+  if (!username || !/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
+    res.status(400).json({ error: "3–20 тэмдэгт, зөвхөн үсэг/тоо/_" }); return;
+  }
+
+  const user = await User.findById(req.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  // 1 month cooldown
+  if (user.usernameChangedAt) {
+    const cooldownMs = 30 * 24 * 60 * 60 * 1000;
+    const elapsed    = Date.now() - user.usernameChangedAt.getTime();
+    if (elapsed < cooldownMs) {
+      const daysLeft = Math.ceil((cooldownMs - elapsed) / (24 * 60 * 60 * 1000));
+      res.status(429).json({ error: `Хэрэглэгчийн нэрийг ${daysLeft} өдрийн дараа солих боломжтой` });
+      return;
+    }
+  }
+
+  // Uniqueness check
+  const existing = await User.findOne({ username });
+  if (existing && String(existing._id) !== req.userId) {
+    res.status(409).json({ error: "Энэ хэрэглэгчийн нэр аль хэдийн бүртгэлтэй байна" }); return;
+  }
+
+  await User.findByIdAndUpdate(req.userId, { username, usernameChangedAt: new Date() });
+  res.json({ success: true, username });
 });
 
 export default router;

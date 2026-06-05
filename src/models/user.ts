@@ -15,6 +15,10 @@ export interface IUser {
   freeTrialUsed: boolean;
   subscription?: ISubscription;
   createdAt: Date;
+  username?: string;
+  usernameChangedAt?: Date;
+  lookScore?: number;       // 0–100, decimal — best analysis score × 10
+  avatarUrl?: string;       // latest selfie for leaderboard
 }
 
 export interface IUserDocument extends IUser, Document {}
@@ -33,10 +37,14 @@ const subscriptionSchema = new Schema<ISubscription>(
 
 const userSchema = new Schema<IUserDocument>(
   {
-    phone:         { type: String, required: true, unique: true, match: /^\d{8,16}$/ },
-    phoneVerified: { type: Boolean, default: true },
-    freeTrialUsed: { type: Boolean, default: false },
-    subscription:  { type: subscriptionSchema },
+    phone:              { type: String, required: true, unique: true, match: /^\d{8,16}$/ },
+    phoneVerified:      { type: Boolean, default: true },
+    freeTrialUsed:      { type: Boolean, default: false },
+    subscription:       { type: subscriptionSchema },
+    username:           { type: String, unique: true, sparse: true, minlength: 3, maxlength: 20 },
+    usernameChangedAt:  { type: Date },
+    lookScore:          { type: Number, min: 0, max: 100, default: null },
+    avatarUrl:          { type: String },
   },
   { timestamps: { createdAt: "createdAt", updatedAt: false } }
 );
