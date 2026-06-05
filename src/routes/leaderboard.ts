@@ -7,7 +7,7 @@ const router = Router();
    Public endpoint — top 100 users by lookScore (0–100 decimal)
 ────────────────────────────────────────────────────────────── */
 router.get("/", async (_req: Request, res: Response) => {
-  const users = await User.find({ lookScore: { $ne: null }, username: { $ne: null } })
+  const users = await User.find({ lookScore: { $ne: null }, username: { $ne: null }, showOnLeaderboard: true })
     .sort({ lookScore: -1 })
     .limit(100)
     .select("username lookScore avatarUrl createdAt")

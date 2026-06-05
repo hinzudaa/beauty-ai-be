@@ -17,8 +17,9 @@ export interface IUser {
   createdAt: Date;
   username?: string;
   usernameChangedAt?: Date;
-  lookScore?: number;       // 0–100, decimal — best analysis score × 10
-  avatarUrl?: string;       // latest selfie for leaderboard
+  lookScore?: number;          // 0–100, decimal — best analysis score × 10
+  avatarUrl?: string;          // latest generated look for leaderboard
+  showOnLeaderboard?: boolean; // explicit consent to appear on leaderboard
 }
 
 export interface IUserDocument extends IUser, Document {}
@@ -41,10 +42,11 @@ const userSchema = new Schema<IUserDocument>(
     phoneVerified:      { type: Boolean, default: true },
     freeTrialUsed:      { type: Boolean, default: false },
     subscription:       { type: subscriptionSchema },
-    username:           { type: String, unique: true, sparse: true, minlength: 3, maxlength: 20 },
-    usernameChangedAt:  { type: Date },
-    lookScore:          { type: Number, min: 0, max: 100, default: null },
-    avatarUrl:          { type: String },
+    username:            { type: String, unique: true, sparse: true, minlength: 3, maxlength: 20 },
+    usernameChangedAt:   { type: Date },
+    lookScore:           { type: Number, min: 0, max: 100, default: null },
+    avatarUrl:           { type: String },
+    showOnLeaderboard:   { type: Boolean, default: false },
   },
   { timestamps: { createdAt: "createdAt", updatedAt: false } }
 );

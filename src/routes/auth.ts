@@ -252,4 +252,21 @@ router.post("/username", requireAuth, async (req: Request, res: Response) => {
   res.json({ success: true, username });
 });
 
+/* ── POST /auth/leaderboard-consent ── set leaderboard visibility + chosen avatar */
+router.post("/leaderboard-consent", requireAuth, async (req: Request, res: Response) => {
+  const { show, avatarUrl } = req.body as { show?: boolean; avatarUrl?: string };
+  if (typeof show !== "boolean") {
+    res.status(400).json({ error: "show must be boolean" }); return;
+  }
+  const user = await User.findById(req.userId);
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+  if (show && !user.username) {
+    res.status(400).json({ error: "Leaderboard-д нэмэгдэхийн тулд эхлээд хэрэглэгчийн нэр үүсгэнэ үү" }); return;
+  }
+  const update: Record<string, unknown> = { showOnLeaderboard: show };
+  if (show && avatarUrl) update.avatarUrl = avatarUrl;
+  await User.findByIdAndUpdate(req.userId, update);
+  res.json({ success: true, showOnLeaderboard: show });
+});
+
 export default router;
