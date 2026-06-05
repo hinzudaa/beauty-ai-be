@@ -219,42 +219,88 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
 
   const items: { name: string; prompt: string }[] = [];
 
-  // IMAGE 1 — Hairstyle
+  // Determine K-fashion aesthetic keywords from outfit analysis
+  const ksName    = (typeof outfitStyle === "object" ? outfitStyle?.koreanStyle?.styleName : "") || "";
+  const bestColor = (typeof outfitStyle === "object" ? outfitStyle?.bestColors?.[0] : "") || "black";
+  const avoidNote = typeof outfitStyle === "object" && outfitStyle?.koreanStyle?.description ? outfitStyle.koreanStyle.description : "";
+
+  // Pick editorial style based on occasion & outfit
+  const combined = (outfitDesc + " " + ksName + " " + occasion).toLowerCase();
+  const isY2K       = combined.includes("y2k") || combined.includes("street") || combined.includes("urban") || combined.includes("casual");
+  const isOldMoney  = combined.includes("old money") || combined.includes("quiet luxury") || combined.includes("formal") || occasion === "interview" || occasion === "wedding";
+  const isKdrama    = combined.includes("k-drama") || combined.includes("smart casual") || combined.includes("clean fit");
+
+  const editorialStyle = isY2K
+    ? "Y2K Korean street fashion editorial, bold Y2K energy, oversized silhouette, chain accessories, platform shoes, confident idol pose"
+    : isOldMoney
+    ? "Old Money Korean editorial, quiet luxury aesthetic, tailored silhouette, premium fabrics, understated elegance, clean minimal pose"
+    : isKdrama
+    ? "K-Drama Smart Casual editorial, Korean drama lead character style, refined everyday look, clean modern pose"
+    : "K-Pop idol fashion editorial, premium Korean fashion magazine spread, confident model pose";
+
+  // Shared collage layout instruction
+  const collageLayout = `
+Layout: K-pop fashion moodboard collage on white background.
+CENTER (largest panel): full body portrait, main look.
+TOP-LEFT panel: close-up face portrait, beauty shot.
+TOP-RIGHT panel: back view or side profile.
+BOTTOM-LEFT panel: seated or relaxed candid pose.
+BOTTOM-RIGHT panel: cute chibi cartoon character version of the person, same outfit and hair, big eyes anime style.
+Decorative accents between panels: small hand-drawn stars ★, hearts ♡, crowns 👑 in pink and black ink doodle style.
+Small handwritten-style text labels: style notes, mood words.
+Overall aesthetic: Korean idol fashion moodboard, Y2K editorial magazine spread, pink & black color palette.`.trim();
+
+  // IMAGE 1 — Hair moodboard collage
   const topHair = hairNames[0];
   if (topHair) {
     items.push({
       name: topHair,
-      prompt: `The same ${personStr} from the input photo with a Korean ${topHair} hairstyle. K-drama style hair, perfectly styled. Close-up portrait focused on the face and hair. Same face, same skin, same features — only the hairstyle changes. Golden hour warm light hitting one side of the face, soft bokeh background, natural skin texture, sharp eyes, cinematic color grade with warm tones. Professional 85mm lens, f/1.4 shallow depth of field, ultra realistic, photorealistic, 8K resolution, masterpiece portrait photography.`,
+      prompt: `${collageLayout}
+SUBJECT: The same ${personStr} from the input photo — same face, same skin, same features. ONLY the hairstyle changes to Korean ${topHair}.
+All panels show the same ${personStr} with ${topHair} hair: center full body, top-left beauty close-up, top-right back view, bottom-left candid pose, bottom-right chibi figure.
+Studio quality lighting, ultra photorealistic main panels, 8K, Korean beauty magazine quality.`,
     });
   }
 
-  // Outfit aesthetic from AI analysis
-  const outfitAesthetic = outfitDesc || "Korean clean fit, modern premium fashion, elevated contemporary style";
+  // Outfit aesthetic string for prompt
+  const outfitAesthetic = outfitDesc
+    || `${bestColor} Korean fashion, ${ksName || "K-pop street style"}`;
 
-  // IMAGE 2 — Outfit
+  // IMAGE 2 — Outfit moodboard collage
   if (outfitDesc || outfitStyle) {
     items.push({
       name: "Outfit Look",
-      prompt: `The same ${personStr} from the input photo wearing a ${outfitAesthetic} outfit for ${occasion}. Only the clothing changes — same face, same features. Athletic symmetrical body, confident posture. Natural soft daylight, cinematic color grade, fashion editorial style, realistic skin texture, shallow depth of field. Full body shot, centered composition, 85mm lens f/2.0, ultra photorealistic, professional fashion shoot, 8K, masterpiece.`,
+      prompt: `${collageLayout}
+SUBJECT: The same ${personStr} from the input photo — same face, same features. ONLY clothing changes to: ${outfitAesthetic}.
+${avoidNote ? avoidNote + "." : ""}
+All panels show the same ${personStr} in this outfit: center full body confident pose, top-left face close-up, top-right back view showing outfit details, bottom-left seated relaxed pose, bottom-right chibi cartoon figure in same outfit.
+${editorialStyle}. Ultra photorealistic, 8K, Vogue Korea editorial quality.`,
     });
   }
 
-  // Pro image 3: second hair variation
+  // Pro image 3: second hair moodboard
   if (isPro && hairNames[1]) {
     items.push({
       name: hairNames[1],
-      prompt: `The same ${personStr} from the input photo with a Korean ${hairNames[1]} hairstyle. K-drama style hair, perfectly styled. Close-up portrait focused on face and hair. Same face, same skin — only the hairstyle changes. Soft studio lighting, natural skin texture, sharp eyes, cinematic color grade, shallow depth of field. Ultra realistic, photorealistic, 8K, masterpiece portrait photography.`,
+      prompt: `${collageLayout}
+SUBJECT: The same ${personStr} from the input photo — same face, same features. ONLY hairstyle changes to Korean ${hairNames[1]}.
+Golden hour outdoor version: warm backlight, soft bokeh background, natural skin texture.
+All panels with ${hairNames[1]} hair: center full body, top-left beauty close-up, top-right profile view, bottom-left candid pose, bottom-right chibi figure.
+Ultra photorealistic, 8K, K-drama lead character quality.`,
     });
   }
 
-  // Pro image 4: second outfit variation
+  // Pro image 4: second outfit moodboard — street style
   if (isPro && (outfitDesc || outfitStyle)) {
     items.push({
-      name: "Outfit Look 2",
-      prompt: `The same ${personStr} from the input photo wearing an alternative ${outfitAesthetic} look for ${occasion} with a different silhouette. Only clothing changes. Athletic symmetrical body. Natural soft daylight, cinematic color grade, full body shot, 85mm lens f/2.0, ultra photorealistic, 8K, masterpiece fashion editorial.`,
+      name: "Street Look",
+      prompt: `${collageLayout}
+SUBJECT: The same ${personStr} from the input photo — same face, same features. Alternative ${outfitAesthetic} street look, different silhouette.
+Urban Korean street setting across panels: center full body walking pose, top-left face close-up, top-right back view, bottom-left sitting on steps pose, bottom-right chibi figure.
+Dynamic, confident, K-pop idol off-duty energy. Ultra photorealistic, 8K, editorial quality.`,
     });
   }
-  // Pro total: 4 images (2 hair + 2 outfit)
+  // Pro total: 4 moodboard collage images
 
   try {
     // Run sequentially — fal.ai handles concurrency internally
