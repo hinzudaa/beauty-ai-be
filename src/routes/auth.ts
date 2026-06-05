@@ -3,6 +3,7 @@ import { Router, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { config } from "../config";
 import { User } from "../models/user";
+import { Analysis } from "../models/analysis";
 import { OtpSession } from "../models/otpSession";
 import { requireAuth } from "../middleware/auth";
 import { createSession, checkSession, HttpError } from "../services/verifyMn";
@@ -265,8 +266,26 @@ router.post("/leaderboard-consent", requireAuth, async (req: Request, res: Respo
   }
   const update: Record<string, unknown> = { showOnLeaderboard: show };
   if (show && avatarUrl) update.avatarUrl = avatarUrl;
+
+  // Leaderboard ON хийх үед хамгийн сүүлийн analysis-аас lookScore sync хийнэ
+  if (show) {
+    const latest = await Analysis.findOne({ userId: req.userId })
+      .sort({ createdAt: -1 })
+      .select("analysis")
+      .lean();
+
+    const raw = typeof (latest?.analysis as Record<string, unknown>)?.lookmaxScore === "number"
+      ? (latest!.analysis as Record<string, unknown>).lookmaxScore as number
+      : 0;
+
+    if (raw > 0) {
+      const newScore  = Math.round(raw * 10 * 1000) / 1000;
+      update.lookScore = Math.max(newScore, user.lookScore ?? 0);
+    }
+  }
+
   await User.findByIdAndUpdate(req.userId, update);
-  res.json({ success: true, showOnLeaderboard: show });
+  res.json({ success: true, showOnLeaderboard: show, lookScore: update.lookScore ?? user.lookScore });
 });
 
 export default router;
