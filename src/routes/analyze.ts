@@ -213,49 +213,66 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
     typeof h === "string" ? h : h.name
   );
 
-  // Normalise outfitStyle → extract readable string for prompt
-  let outfitDesc = "";
-  if (typeof outfitStyle === "string") {
-    outfitDesc = outfitStyle;
-  } else if (outfitStyle) {
-    const ks = outfitStyle.koreanStyle;
-    const colors = outfitStyle.bestColors?.join(", ") ?? "";
-    outfitDesc = [
-      ks?.styleName,
-      ks?.description,
-      colors ? `Best colors: ${colors}` : "",
-      ks?.tops?.join(", "),
-      ks?.bottoms?.join(", "),
-    ].filter(Boolean).join(". ");
-  }
+  // Normalise outfitStyle → English-only string for image prompts
+  // ⚠️ Do NOT include ks.description / tops / bottoms / bestColors — those are Mongolian
+  const ksName = (typeof outfitStyle === "object" ? outfitStyle?.koreanStyle?.styleName : "") || "";
 
   // Check user's plan
-  const user = await User.findById(req.userId);
-  const plan = user?.subscription?.plan ?? "basic";
-  const isPro = plan === "pro";
-  // Basic/Standard: 1 hair + 1 outfit = 2 images
-  // Pro:            2 hair + 2 outfit = 4 images
+  const user  = await User.findById(req.userId);
+  const isPro = (user?.subscription?.plan ?? "basic") === "pro";
 
   const items: { name: string; prompt: string }[] = [];
 
-  // Determine K-fashion aesthetic keywords from outfit analysis
-  const ksName    = (typeof outfitStyle === "object" ? outfitStyle?.koreanStyle?.styleName : "") || "";
-  const bestColor = (typeof outfitStyle === "object" ? outfitStyle?.bestColors?.[0] : "") || "black";
-  const avoidNote = typeof outfitStyle === "object" && outfitStyle?.koreanStyle?.description ? outfitStyle.koreanStyle.description : "";
+  // ── Vibe detection — 8 categories, priority: most specific first ──
+  // Use only English ksName + occasion — avoids Mongolian false-matches
+  const combined   = (ksName + " " + occasion).toLowerCase();
+  const isOldMoney = combined.includes("old money")  || combined.includes("quiet luxury") || combined.includes("formal") || occasion === "interview" || occasion === "wedding";
+  const isKdrama   = combined.includes("k-drama")    || combined.includes("smart casual") || combined.includes("clean fit");
+  const isMinimal  = combined.includes("minimal")    || combined.includes("monochrome");
+  const isPreppy   = combined.includes("preppy");
+  const isBusiness = combined.includes("business");
+  const isStreet   = combined.includes("streetwear") || combined.includes("oversized");
+  const isKpop     = combined.includes("k-pop")      || combined.includes("kpop")        || combined.includes("idol");
+  const isY2K      = combined.includes("y2k")        || combined.includes("urban");
 
-  // Pick editorial style based on occasion & outfit
-  const combined = (outfitDesc + " " + ksName + " " + occasion).toLowerCase();
-  const isY2K       = combined.includes("y2k") || combined.includes("street") || combined.includes("urban") || combined.includes("casual");
-  const isOldMoney  = combined.includes("old money") || combined.includes("quiet luxury") || combined.includes("formal") || occasion === "interview" || occasion === "wedding";
-  const isKdrama    = combined.includes("k-drama") || combined.includes("smart casual") || combined.includes("clean fit");
-
-  const editorialStyle = isY2K
-    ? "Y2K Korean street fashion editorial, bold Y2K energy, oversized silhouette, chain accessories, platform shoes, confident idol pose"
-    : isOldMoney
+  const editorialStyle = isOldMoney
     ? "Old Money Korean editorial, quiet luxury aesthetic, tailored silhouette, premium fabrics, understated elegance, clean minimal pose"
     : isKdrama
     ? "K-Drama Smart Casual editorial, Korean drama lead character style, refined everyday look, clean modern pose"
-    : "K-Pop idol fashion editorial, premium Korean fashion magazine spread, confident model pose";
+    : isMinimal
+    ? "Minimal Korean editorial, clean lines, tonal monochrome dressing, effortlessly understated pose"
+    : isPreppy
+    ? "Preppy Korean editorial, collegiate aesthetic, layered knitwear, plaid accents, polished confident pose"
+    : isBusiness
+    ? "Business Casual Korean editorial, tailored blazer, pressed trousers, modern office aesthetic, poised powerful pose"
+    : isStreet
+    ? "Korean Streetwear editorial, oversized silhouette, layered fits, bold accessories, confident street stance"
+    : isKpop
+    ? "K-Pop idol fashion editorial, stage-ready outfit, bold statement pieces, dynamic powerful model pose"
+    : isY2K
+    ? "Y2K Korean street fashion editorial, bold Y2K energy, chain accessories, platform shoes, confident idol pose"
+    : "K-fashion editorial, premium Korean fashion magazine spread, confident model pose";
+
+  const vibe = isOldMoney
+    ? (isMale ? "Old Money Guy"         : "Old Money Vibes")
+    : isKdrama
+    ? (isMale ? "K-Drama Lead"          : "K-Drama Heroine")
+    : isMinimal
+    ? (isMale ? "Minimal Aesthetic Guy" : "Minimal Aesthetic Vibes")
+    : isPreppy
+    ? (isMale ? "Preppy K-Guy"          : "Preppy K-Girl Vibes")
+    : isBusiness
+    ? (isMale ? "Business Casual Guy"   : "Business Casual Vibes")
+    : isStreet
+    ? (isMale ? "Streetwear Guy Vibes"  : "Streetwear Girl Vibes")
+    : isKpop
+    ? (isMale ? "K-Pop It Guy Vibes"    : "K-Pop It Girl Vibes")
+    : isY2K
+    ? (isMale ? "Y2K Street Guy"        : "Y2K Street Vibes")
+    : (isMale ? "K-Pop It Guy Vibes"    : "K-Pop It Girl Vibes");
+
+  // English-only outfit description for image prompts
+  const outfitAesthetic = ksName || "K-pop Korean fashion";
 
   // Shared collage layout instruction
   const collageLayout = `
@@ -281,19 +298,14 @@ Studio quality lighting, ultra photorealistic main panels, 8K, Korean beauty mag
     });
   }
 
-  // Outfit aesthetic string for prompt
-  const outfitAesthetic = outfitDesc
-    || `${bestColor} Korean fashion, ${ksName || "K-pop street style"}`;
-
   // IMAGE 2 — Outfit moodboard collage
-  if (outfitDesc || outfitStyle) {
+  if (outfitStyle) {
     items.push({
       name: "Outfit Look",
       prompt: `${collageLayout}
 SUBJECT: The same ${personStr} from the input photo — same face, same features. ONLY clothing changes to: ${outfitAesthetic}.
-${avoidNote ? avoidNote + "." : ""}
 All panels show the same ${personStr} in this outfit: center full body confident pose, top-left face close-up, top-right back view showing outfit details, bottom-left seated relaxed pose, bottom-right chibi cartoon figure in same outfit.
-${editorialStyle}. Ultra photorealistic, 8K, Vogue Korea editorial quality.`,
+${editorialStyle}. Vibe: ${vibe}. Ultra photorealistic, 8K, Vogue Korea editorial quality.`,
     });
   }
 
@@ -310,33 +322,36 @@ Ultra photorealistic, 8K, K-drama lead character quality.`,
   }
 
   // Pro image 4: second outfit moodboard — street style
-  if (isPro && (outfitDesc || outfitStyle)) {
+  if (isPro && outfitStyle) {
     items.push({
       name: "Street Look",
       prompt: `${collageLayout}
 SUBJECT: The same ${personStr} from the input photo — same face, same features. Alternative ${outfitAesthetic} street look, different silhouette.
 Urban Korean street setting across panels: center full body walking pose, top-left face close-up, top-right back view, bottom-left sitting on steps pose, bottom-right chibi figure.
-Dynamic, confident, K-pop idol off-duty energy. Ultra photorealistic, 8K, editorial quality.`,
+Dynamic, confident, K-pop idol off-duty energy. Vibe: ${vibe}. Ultra photorealistic, 8K, editorial quality.`,
     });
   }
-  // Pro total: 4 moodboard collage images
 
   try {
-    // Run sequentially — fal.ai handles concurrency internally
+    // Run ALL images in PARALLEL — much faster than sequential
+    const results = await Promise.allSettled(
+      items.map(async (item) => {
+        const falUrl      = await generateWithInstantID(imageUrl, item.prompt);
+        const permanentUrl = await saveToCDN(falUrl);
+        return { name: item.name, imageUrl: permanentUrl };
+      })
+    );
+
     const looks: Array<{ name: string; imageUrl: string }> = [];
-
-    for (const item of items) {
-      // fal.ai InstantID: takes the Cloudinary selfie URL as face reference
-      // → generates the SAME person with only hair/outfit changed
-      const falUrl = await generateWithInstantID(imageUrl, item.prompt);
-
-      // Save to Cloudinary for permanence (fal.ai URLs may expire)
-      const permanentUrl = await saveToCDN(falUrl);
-      looks.push({ name: item.name, imageUrl: permanentUrl });
+    for (const r of results) {
+      if (r.status === "fulfilled") looks.push(r.value);
+      else console.error("[generate-looks] image failed:", r.reason?.message ?? r.reason);
     }
 
+    if (looks.length === 0) throw new Error("Бүх зураг үүсгэхэд алдаа гарлаа");
+
     if (analysisId) {
-      Analysis.findByIdAndUpdate(analysisId, { looks }).catch(() => {});
+      Analysis.findByIdAndUpdate(analysisId, { looks, generatingAt: null }).catch(() => {});
     }
 
     // ── avatarUrl + lookScore — одон write-д ──────────────────
@@ -363,7 +378,7 @@ Dynamic, confident, K-pop idol off-duty energy. Ultra photorealistic, 8K, editor
 
     res.json({ looks });
   } catch (err) {
-    // Log the full error so we can debug
+    if (analysisId) Analysis.findByIdAndUpdate(analysisId, { generatingAt: null }).catch(() => {});
     console.error("[analyze/generate-looks] FULL ERROR:", err);
     res.status(500).json({
       error: "Look зураг үүсгэхэд алдаа гарлаа",
