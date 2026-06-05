@@ -4,6 +4,12 @@ import { User } from "../models/user";
 import { Payment } from "../models/payment";
 import { UsageLog } from "../models/usageLog";
 import { Analysis } from "../models/analysis";
+import { getSetting } from "../models/settings";
+
+const LIMIT_DEFAULTS: Record<string, number> = { basicLimit: 5, standardLimit: 10, proLimit: 10 };
+async function getPlanLimit(plan: string): Promise<number> {
+  return getSetting<number>(`${plan}Limit`, LIMIT_DEFAULTS[`${plan}Limit`] ?? 5);
+}
 
 const router = Router();
 
@@ -37,8 +43,8 @@ router.get("/", requireAuth, async (req: Request, res: Response) => {
       status:         sub.status === "active" && sub.expiresAt > now ? "active" : "expired",
       expiresAt:      sub.expiresAt,
       monthlyUsage:   sub.monthlyUsage,
-      usageLimit:     sub.plan === "pro" ? 10 : sub.plan === "standard" ? 10 : 5,
-      usageRemaining: Math.max(0, (sub.plan === "pro" ? 10 : sub.plan === "standard" ? 10 : 5) - sub.monthlyUsage),
+      usageLimit:     await getPlanLimit(sub.plan),
+      usageRemaining: Math.max(0, (await getPlanLimit(sub.plan)) - sub.monthlyUsage),
       usageResetAt:   sub.usageResetAt,
     } : null,
     payments: payments.map((p) => ({

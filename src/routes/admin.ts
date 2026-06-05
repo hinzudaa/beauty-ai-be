@@ -11,8 +11,14 @@ const router = Router();
 
 const PRICE_DEFAULTS: Record<string, number> = {
   basicPrice:    19900,
-  standardPrice: 29900,
-  proPrice:      39900,
+  standardPrice: 34900,  // Option A
+  proPrice:      59900,  // Option A
+};
+
+const LIMIT_DEFAULTS: Record<string, number> = {
+  basicLimit:    5,
+  standardLimit: 10,
+  proLimit:      10,
 };
 
 /** All admin accounts — add/remove here */
@@ -112,23 +118,31 @@ router.get("/usage", requireAdmin, async (req: Request, res: Response) => {
 });
 
 router.get("/settings", requireAdmin, async (_req: Request, res: Response) => {
-  const [basicPrice, standardPrice, proPrice] = await Promise.all([
+  const [basicPrice, standardPrice, proPrice, basicLimit, standardLimit, proLimit] = await Promise.all([
     getSetting<number>("basicPrice",    PRICE_DEFAULTS.basicPrice),
     getSetting<number>("standardPrice", PRICE_DEFAULTS.standardPrice),
     getSetting<number>("proPrice",      PRICE_DEFAULTS.proPrice),
+    getSetting<number>("basicLimit",    LIMIT_DEFAULTS.basicLimit),
+    getSetting<number>("standardLimit", LIMIT_DEFAULTS.standardLimit),
+    getSetting<number>("proLimit",      LIMIT_DEFAULTS.proLimit),
   ]);
-  res.json({ basicPrice, standardPrice, proPrice });
+  res.json({ basicPrice, standardPrice, proPrice, basicLimit, standardLimit, proLimit });
 });
 
 router.put("/settings", requireAdmin, async (req: Request, res: Response) => {
-  const allowed = ["basicPrice", "standardPrice", "proPrice"];
+  const allowedPrices = ["basicPrice", "standardPrice", "proPrice"];
+  const allowedLimits = ["basicLimit", "standardLimit", "proLimit"];
   const body    = req.body as Record<string, number>;
   const updates: Promise<void>[] = [];
 
   for (const [key, val] of Object.entries(body)) {
-    if (!allowed.includes(key)) continue;
-    if (typeof val !== "number" || val < 100) {
-      res.status(400).json({ error: `${key} хамгийн багадаа 100₮ байх ёстой` });
+    if (!allowedPrices.includes(key) && !allowedLimits.includes(key)) continue;
+    if (typeof val !== "number" || val < 1) {
+      res.status(400).json({ error: `${key}: утга 1-ээс их байх ёстой` });
+      return;
+    }
+    if (allowedPrices.includes(key) && val < 100) {
+      res.status(400).json({ error: `${key}: хамгийн багадаа 100₮ байх ёстой` });
       return;
     }
     updates.push(setSetting(key, val));
@@ -136,12 +150,15 @@ router.put("/settings", requireAdmin, async (req: Request, res: Response) => {
 
   await Promise.all(updates);
 
-  const [basicPrice, standardPrice, proPrice] = await Promise.all([
+  const [basicPrice, standardPrice, proPrice, basicLimit, standardLimit, proLimit] = await Promise.all([
     getSetting<number>("basicPrice",    PRICE_DEFAULTS.basicPrice),
     getSetting<number>("standardPrice", PRICE_DEFAULTS.standardPrice),
     getSetting<number>("proPrice",      PRICE_DEFAULTS.proPrice),
+    getSetting<number>("basicLimit",    LIMIT_DEFAULTS.basicLimit),
+    getSetting<number>("standardLimit", LIMIT_DEFAULTS.standardLimit),
+    getSetting<number>("proLimit",      LIMIT_DEFAULTS.proLimit),
   ]);
-  res.json({ basicPrice, standardPrice, proPrice });
+  res.json({ basicPrice, standardPrice, proPrice, basicLimit, standardLimit, proLimit });
 });
 
 router.get("/subscriptions", requireAdmin, async (req: Request, res: Response) => {
@@ -225,7 +242,7 @@ router.patch("/users/:id/grant", requireAdmin, async (req: Request, res: Respons
 
   const now       = new Date();
   const expiresAt = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
-  const limit     = plan === "pro" ? 10 : plan === "standard" ? 10 : 5;
+  const limit     = await getSetting<number>(`${plan}Limit`, LIMIT_DEFAULTS[`${plan}Limit`] ?? 5);
 
   await User.findByIdAndUpdate(req.params.id, {
     subscription: {

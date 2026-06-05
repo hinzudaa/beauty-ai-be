@@ -11,8 +11,8 @@ const router = Router();
 
 const PLAN_DEFAULTS: Record<string, number> = {
   basicPrice:    19900,
-  standardPrice: 29900,
-  proPrice:      39900,
+  standardPrice: 34900,  // Option A
+  proPrice:      59900,  // Option A
 };
 
 const PLAN_DESC: Record<string, string> = {

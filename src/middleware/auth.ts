@@ -2,6 +2,20 @@ import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { config } from "../config";
 import { User } from "../models/user";
+import { getSetting } from "../models/settings";
+
+// In-memory cache for plan limits (60s TTL) — avoids DB hit on every request
+const _limitCache: Map<string, { v: number; exp: number }> = new Map();
+async function getPlanLimit(plan: string): Promise<number> {
+  const key     = `${plan}Limit`;
+  const now     = Date.now();
+  const cached  = _limitCache.get(key);
+  if (cached && cached.exp > now) return cached.v;
+  const defaults: Record<string, number> = { basicLimit: 5, standardLimit: 10, proLimit: 10 };
+  const v = await getSetting<number>(key, defaults[key] ?? 5);
+  _limitCache.set(key, { v, exp: now + 60_000 });
+  return v;
+}
 
 export interface AuthPayload {
   userId: string;
@@ -71,7 +85,7 @@ export async function requireAccess(
     sub.monthlyUsage = 0;
   }
 
-  const limit = sub.plan === "pro" ? 10 : sub.plan === "standard" ? 10 : 5;
+  const limit = await getPlanLimit(sub.plan);
   if (sub.monthlyUsage >= limit) {
     res.status(402).json({
       error: "usageLimitReached",
