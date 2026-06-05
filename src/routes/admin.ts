@@ -208,6 +208,59 @@ router.get("/users", requireAdmin, async (req: Request, res: Response) => {
   });
 });
 
+/* ── PATCH /admin/users/:id/grant ─────────────────────────────
+   Grant or update a user's subscription plan from admin panel.
+   Body: { plan: "basic"|"standard"|"pro", days?: number }
+────────────────────────────────────────────────────────────── */
+router.patch("/users/:id/grant", requireAdmin, async (req: Request, res: Response) => {
+  const { plan, days = 30 } = req.body as { plan?: string; days?: number };
+  const validPlans = ["basic", "standard", "pro"];
+  if (!plan || !validPlans.includes(plan)) {
+    res.status(400).json({ error: "plan нь basic, standard, эсвэл pro байх ёстой" });
+    return;
+  }
+
+  const user = await User.findById(req.params.id);
+  if (!user) { res.status(404).json({ error: "Хэрэглэгч олдсонгүй" }); return; }
+
+  const now       = new Date();
+  const expiresAt = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+  const limit     = plan === "pro" ? 10 : plan === "standard" ? 10 : 5;
+
+  await User.findByIdAndUpdate(req.params.id, {
+    subscription: {
+      plan,
+      status:       "active",
+      startedAt:    now,
+      expiresAt,
+      monthlyUsage: 0,
+      usageResetAt: expiresAt,
+    },
+  });
+
+  res.json({
+    success: true,
+    phone:   user.phone,
+    plan,
+    expiresAt,
+    usageLimit: limit,
+  });
+});
+
+/* ── DELETE /admin/users/:id/subscription ─────────────────────
+   Remove a user's active subscription.
+────────────────────────────────────────────────────────────── */
+router.delete("/users/:id/subscription", requireAdmin, async (req: Request, res: Response) => {
+  const user = await User.findById(req.params.id);
+  if (!user) { res.status(404).json({ error: "Хэрэглэгч олдсонгүй" }); return; }
+
+  await User.findByIdAndUpdate(req.params.id, {
+    $unset: { subscription: "" },
+  });
+
+  res.json({ success: true, phone: user.phone });
+});
+
 router.get("/payments", requireAdmin, async (req: Request, res: Response) => {
   const page   = parseInt(String(req.query.page  ?? "1"),  10);
   const limit  = parseInt(String(req.query.limit ?? "20"), 10);
