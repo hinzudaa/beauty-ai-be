@@ -307,28 +307,53 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
   const bestColor = (typeof outfitStyle === "object" ? outfitStyle?.bestColors?.[0] : "") || "black";
   const avoidNote = typeof outfitStyle === "object" && outfitStyle?.koreanStyle?.description ? outfitStyle.koreanStyle.description : "";
 
-  // Pick editorial style based on occasion & outfit
-  const combined = (outfitDesc + " " + ksName + " " + occasion).toLowerCase();
-  const isY2K       = combined.includes("y2k") || combined.includes("street") || combined.includes("urban") || combined.includes("casual");
-  const isOldMoney  = combined.includes("old money") || combined.includes("quiet luxury") || combined.includes("formal") || occasion === "interview" || occasion === "wedding";
-  const isKdrama    = combined.includes("k-drama") || combined.includes("smart casual") || combined.includes("clean fit");
+  // Match each Korean style name to its own category — checked in priority order (most specific first)
+  const combined   = (ksName + " " + occasion).toLowerCase();
+  const isOldMoney = combined.includes("old money") || combined.includes("quiet luxury") || combined.includes("formal") || occasion === "interview" || occasion === "wedding";
+  const isKdrama   = combined.includes("k-drama") || combined.includes("smart casual") || combined.includes("clean fit");
+  const isMinimal  = combined.includes("minimal") || combined.includes("monochrome");
+  const isPreppy   = combined.includes("preppy");
+  const isBusiness = combined.includes("business");
+  const isStreet   = combined.includes("streetwear") || combined.includes("oversized");  // "streetwear" not "street" — avoids matching "K-Pop Street Fashion"
+  const isKpop     = combined.includes("k-pop") || combined.includes("kpop") || combined.includes("idol");
+  const isY2K      = combined.includes("y2k") || combined.includes("urban");
 
-  const editorialStyle = isY2K
-    ? "Y2K Korean street fashion editorial, bold Y2K energy, oversized silhouette, chain accessories, platform shoes, confident idol pose"
-    : isOldMoney
+  const editorialStyle = isOldMoney
     ? "Old Money Korean editorial, quiet luxury aesthetic, tailored silhouette, premium fabrics, understated elegance, clean minimal pose"
     : isKdrama
     ? "K-Drama Smart Casual editorial, Korean drama lead character style, refined everyday look, clean modern pose"
-    : "K-Pop idol fashion editorial, premium Korean fashion magazine spread, confident model pose";
+    : isMinimal
+    ? "Minimal Korean editorial, clean lines, tonal monochrome dressing, negative space composition, effortlessly understated pose"
+    : isPreppy
+    ? "Preppy Korean editorial, collegiate aesthetic, layered knitwear, plaid accents, clean campus energy, polished confident pose"
+    : isBusiness
+    ? "Business Casual Korean editorial, smart professional look, tailored blazer, pressed trousers, modern office aesthetic, poised powerful pose"
+    : isStreet
+    ? "Korean Streetwear editorial, oversized silhouette, layered fits, bold accessories, urban streetwear energy, confident street stance"
+    : isKpop
+    ? "K-Pop idol fashion editorial, stage-ready outfit, bold statement pieces, idol energy, dynamic powerful model pose"
+    : isY2K
+    ? "Y2K Korean street fashion editorial, bold Y2K energy, retro futuristic details, chain accessories, platform shoes, confident idol pose"
+    : "K-fashion editorial, premium Korean fashion magazine spread, confident model pose";
 
   const outfitAesthetic = ksName || outfitDesc || `${bestColor} Korean fashion`;
   const vibe = isOldMoney
-    ? (isMale ? "Old Money Guy"    : "Old Money Vibes")
-    : isY2K
-    ? (isMale ? "Y2K Street Guy"   : "Y2K Street Vibes")
+    ? (isMale ? "Old Money Guy"          : "Old Money Vibes")
     : isKdrama
-    ? "K-Drama Smart Casual"
-    : (isMale ? "K-Pop It Guy Vibes" : "K-Pop It Girl Vibes");
+    ? (isMale ? "K-Drama Lead"           : "K-Drama Heroine")
+    : isMinimal
+    ? (isMale ? "Minimal Aesthetic Guy"  : "Minimal Aesthetic Vibes")
+    : isPreppy
+    ? (isMale ? "Preppy K-Guy"           : "Preppy K-Girl Vibes")
+    : isBusiness
+    ? (isMale ? "Business Casual Guy"    : "Business Casual Vibes")
+    : isStreet
+    ? (isMale ? "Streetwear Guy Vibes"   : "Streetwear Girl Vibes")
+    : isKpop
+    ? (isMale ? "K-Pop It Guy Vibes"     : "K-Pop It Girl Vibes")
+    : isY2K
+    ? (isMale ? "Y2K Street Guy"         : "Y2K Street Vibes")
+    : (isMale ? "K-Pop It Guy Vibes"     : "K-Pop It Girl Vibes");
 
   // Gender-specific moodboard labels & decorations
   const isMaleGen  = isMale;
@@ -347,7 +372,7 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
     `top-left ${beautyLbl.toLowerCase()} close-up portrait, top-right back view or profile, ` +
     `center full body main look (largest panel), bottom-left candid relaxed ${isMaleGen ? "seated" : "posed"} pose, ` +
     `bottom-right ${chibiStyle}. ` +
-    `${subject}. ` +
+    `${subject}. ${editorialStyle}. ` +
     `${decoColor} decorative accents: ${decoIcons} between panels. ` +
     `Handwritten text labels: "${beautyLbl}" "BACK VIEW / PROFILE" "${candLbl}" "${chibiLbl}" "MAIN LOOK: ${label}". ` +
     `Photorealistic panels + chibi anime. High quality, clean white layout.`;
