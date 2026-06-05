@@ -16,7 +16,7 @@ router.get("/", async (_req: Request, res: Response) => {
   const board = users.map((u, idx) => ({
     rank:      idx + 1,
     username:  u.username,
-    lookScore: Number((u.lookScore ?? 0).toFixed(2)),
+    lookScore: Number((u.lookScore ?? 0).toFixed(3)),
     avatarUrl: u.avatarUrl ?? null,
   }));
 
