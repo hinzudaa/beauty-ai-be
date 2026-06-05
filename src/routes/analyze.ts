@@ -200,7 +200,8 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
     const newScore = Math.round(rawScore * 10 * 1000) / 1000;
     const existing = await User.findById(req.userId).select("lookScore").lean();
     const bestScore = Math.max(newScore, existing?.lookScore ?? 0);
-    User.findByIdAndUpdate(req.userId, { lookScore: bestScore }).catch(() => {});
+    await User.findByIdAndUpdate(req.userId, { $set: { lookScore: bestScore } })
+      .catch((e) => console.error("[analyze/full] lookScore update failed:", e?.message ?? e));
 
     res.json({ analysis, occasion: event, analysisId: String(saved._id) });
   } catch (err) {
