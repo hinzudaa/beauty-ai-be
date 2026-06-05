@@ -3,7 +3,7 @@ import OpenAI from "openai";
 import { generateWithInstantID } from "../services/fal";
 import { v2 as cloudinary } from "cloudinary";
 import { config } from "../config";
-import { requireAuth, requireAccess, requirePro } from "../middleware/auth";
+import { requireAuth, requireAccess } from "../middleware/auth";
 import { User } from "../models/user";
 import { UsageLog } from "../models/usageLog";
 import { Analysis } from "../models/analysis";
@@ -20,37 +20,25 @@ const LOOKSMAX_PROMPT = [
   "Энэ хүний нүүрийг маш нарийн шинжлээд зөвхөн доорх JSON форматаар хариул.",
   "Нэмэлт тайлбар, markdown огт оруулахгүй — зөвхөн JSON объект.",
   "",
-  "⚠️ ХЭЛНИЙ ДҮРЭМ: faceShape, features, hiddenStrengths, strengths, improvements, makeupTips, hairRecommendations.reason, outfitStyle талбаруудыг БҮГДИЙГ МОНГОЛ ХЭЛЭЭР бич. Англи хэл хориотой.",
-  "",
   "ЗОРИЛГО: Хүмүүс өөрийнхөө тухай мэддэггүй нуугдмал онцлогуудыг илрүүлж, тэдэнд шинэ зүйл нээж өгөх.",
   "Жирийн тайлбар биш — тодорхой, гайхалтай, практик мэдрэмж өгөх.",
   "",
   "ОНОО ТООЦООЛОХ ЗААВАР (заавал дагах):",
-  "  - Хүн болгонд ӨВӨРМӨЦ оноо өгнө — ижил оноо давтагдах боломжгүй.",
-  "  - Оноо 0.0001 нарийвчлалтай (4 оронтой бутархай). Жишээ: 6.7342, 7.4819, 8.2156",
-  "  - Дараах 8 шалгуурыг тус бүрд 0–10 оноолж, жин дүүнтэй нэгтгэ:",
-  "    1. Нүүрний тэгш хэм (симметр) — 25%",
-  "    2. Алтан пропорц (golden ratio) нүүрний харьцаанд — 20%",
-  "    3. Арьсны чанар, өнгө жигд байдал — 15%",
-  "    4. Нүдний байрлал, хэлбэр, гайхамшиг — 15%",
-  "    5. Эрүү, хацрын тод байдал — 10%",
-  "    6. Хамар, уруулын пропорц — 10%",
-  "    7. Нас харгалзсан залуу харагдах байдал — 3%",
-  "    8. Нийт нүүрний гоо сайхны дуусгаврын impression — 2%",
-  "  - Bell-curve: 1–4 дундаас доош (30%), 4–6 дундаж (40%), 6–8 дэвшилтэт (25%), 8–10 ховор (5%)",
-  "  - Дээд оноо = 10.0000. Дундаж хүн = 5.0.",
+  "  - Хүн амын дундаж = 5.0",
+  "  - 1–4: дундаас доош (30%), 4–6: дундаж (40%), 6–8: дэвшилтэт (25%), 8–10: ховор (5%)",
+  "  - Оноо 0.5 нарийвчлалтай. Нүүрний тэгш хэм, алтан пропорц, арьс, нас харгалз.",
   "",
   "{",
-  '  "gender": "male эсвэл female",',
-  '  "faceShape": "[МОНГОЛООР] Нүүрний хэлбэрийг нарийн тайлбарла — өргөн/урт харьцаа, эрүүний шугам, хацрын өндөр",',
-  '  "lookmaxScore": 7.4819,  // 0.0000–10.0000, 0.0001 нарийвчлал — хүн болгонд өвөрмөц оноо',
+  '  "gender": "Зургаас харж тодорхойлсон хүйс: male эсвэл female",',
+  '  "faceShape": "Нүүрний хэлбэрийг зургаас шууд шинжлэн тайлбарла — урьдчилан тодорхойлсон ангилалгүйгээр. Нүүрний өргөн/урт харьцаа, эрүүний шугам, хацрын өндрийг харьцуулж яггүй тодорхойлол. Жишээ: уртавтар нарийхан нүүр, доошоо нарийссан зүрх хэлбэртэй, дугуйвтар дэлгэр нүүр гэх мэт.",',
+  '  "lookmaxScore": 5.5,',
   "",
   '  "features": {',
-  '    "eyes":    "[МОНГОЛООР] Нүдний хэлбэр, өнгө, тэгш хэм — анзаардаггүй онцлогийг тодруул",',
-  '    "jawline": "[МОНГОЛООР] Эрүүний байдал, хэлбэр — нүүрний нийт харагдалд нөлөөлж байгааг тайлбарла",',
-  '    "chin":    "[МОНГОЛООР] Эрүүний доод хэсгийн тэнцвэр",',
-  '    "nose":    "[МОНГОЛООР] Хамрын пропорц, үзүүр, нуруу",',
-  '    "lips":    "[МОНГОЛООР] Уруулын дүүрэн байдал, хэлбэр, илэрхийлэл"',
+  '    "eyes":    "Нүдний хэлбэр, өнгө, тэгш хэм — хүмүүс өөрсдөө анзаардаггүй онцлог (жишээ: hooded eyelid, heterochromia, limbal ring гэх мэт)",',
+  '    "jawline": "Эрүүний тод байдал, хэлбэр — нүүрний нийт impression-д хэрхэн нөлөөлж байгааг тайлбарла",',
+  '    "chin":    "Эрүүний доод хэсгийн тэнцвэр — profile дээр хэрхэн харагддаг",',
+  '    "nose":    "Хамрын пропорц, bridge, tip — нүүрийн гол тэнхлэгт үзүүлэх нөлөө",',
+  '    "lips":    "Уруулын Cupid\'s bow, philtrum, дүүрэн байдал — эрчим, илэрхийлэл"',
   "  },",
   "",
   '  "skinTone": "Зургаас ШУУД уншсан арьсны бодит өнгө — Fitzpatrick scale (I–VI) болон тодорхой тайлбар. Жишээ: Fitzpatrick II, цайвар-дулаан зааглалтай, нүүрний хацар болон хүзүүний өнгийг харьцуулж тодорхойл",',
@@ -58,26 +46,26 @@ const LOOKSMAX_PROMPT = [
   '  "seasonalColor": "skinTone болон undertone-д үндэслэсэн seasonal color (Spring / Summer / Autumn / Winter) — хамгийн тохирох өнгийн улирал",',
   "",
   '  "hiddenStrengths": [',
-  '    "[МОНГОЛООР] Бусад анзаардаг ч өөрөө мэдэхгүй 2–3 онцлог тал — тодорхой, лавтай"',
+  '    "Хүмүүс өөрсдөө анзаардаггүй гэхдээ бусад нь анзаардаг 2–3 онцлог тал — маш тодорхой, лавтай"',
   "  ],",
-  '  "strengths": ["[МОНГОЛООР] 3 давуу тал — шударга, практик"],',
+  '  "strengths": ["3 тод давуу тал — шударга, хэтэрхий биш"],',
   '  "improvements": [',
-  '    "[МОНГОЛООР] 3–4 зөвлөмж: арьс арчлал, үс засалт, нүүр будалт, хирурги огт биш"',
+  '    "3–4 практик зөвлөмж: skincare routine, үс засалтын нарийн зөвлөгөө, нүүрний хэлбэрт тохирсон нүүр будалтын арга, хирурги огт биш"',
   "  ],",
   "",
-  '  "makeupTips": "[МОНГОЛООР] Нүүрний хэлбэрт тохирсон 1–2 нүүр будалтын тодорхой зөвлөгөө",',
+  '  "makeupTips": "Энэ хүний нүүрний хэлбэр, онцлогт тохирсон 1–2 нүүр будалтын конкрет зөвлөгөө (жишээ: contour хаана хэрэглэх, ямар lip color тохирох)",',
   '  "hairRecommendations": [',
   '    "GENDER-ийг эхлээд тодорхойл.",',
   '    "",',
   '    "Хэрэв male бол зөвхөн эрэгтэй Korean hairstyle-аас сонго:",',
-  '    "Two Block Cut, Comma Hair, Shadow Perm, Down Perm, Leaf Cut, Ivy League Korean, Textured Crop Korean, Dandy Cut, Curtain Hair (Korean Middle Part), Wolf Cut Men, Korean Mullet, Soft Mullet, Short Two Block Fade, Taper Fade Korean Style, Buzz Cut Korean Style, Caesar Cut Korean, Side Part Classic Korean, Slick Back Undercut, Middle Part Perm, Volume Perm Men, Natural Perm, Spiky Textured Cut, Crop Fade Korean, French Crop Korean Style, Edgar Cut Korean Style, Bro Flow Hairstyle, Long Layered Men Hair, Soft Perm Waves, Wet Look Hairstyle",',
+  '    "Two Block Cut, Comma Hair, Shadow Perm, Down Perm, Leaf Cut, Ivy League Korean, Textured Crop Korean, Dandy Cut",',
   '    "",',
   '    "Хэрэв female бол зөвхөн эмэгтэй Korean hairstyle-аас сонго:",',
-  '    "Hush Cut, Korean Layered Cut, Air Bangs, See-through Bangs, Korean Bob, Long Wave Perm, C-Curl Perm, S-Curl Layered Hair, Wolf Cut (Korean Style), Butterfly Cut, Jelly Perm, Root Perm, Digital Perm, Hime Cut (Korean version), Pixie Cut Korean Style, Soft Bob (Textured Bob), Lob (Long Bob), Straight Sleek Hair, Low Layer Cut, Face-Framing Layers, Feather Cut, Mermaid Waves, Volume C-Curl Bob, Shaggy Korean Cut, Curtain Bangs + Long Layers, Half Up Korean Style, Messy Bun K-style, Ponytail with Face Layers",',
+  '    "Hush Cut, Korean Layered Cut, Air Bangs, See-through Bangs, Korean Bob, Long Wave Perm, C-Curl Perm, S-Curl Layered Hair",',
   '    "",',
   '    "Нүүрний хэлбэр, эрүү, хацрын бүтэцтэй хамгийн зохицох 3 үс засалтыг эрэмбэлэн буцаа.",',
   '    "Зөвхөн Korean/K-Drama/K-Pop стиль ашигла.",',
-  '    "Үс засалт бүрийн яагаад тохирохыг 1 өгүүлбэрээр МОНГОЛООР тайлбарла.",',
+  '    "Үс засалт бүрийн яагаад тохирохыг 1 өгүүлбэрээр тайлбарла.",',
   '    "Формат: { \\"name\\": \\"...\\" , \\"reason\\": \\"...\\" }"',
   '  ],',
   '  "outfitStyle": {',
@@ -85,11 +73,11 @@ const LOOKSMAX_PROMPT = [
   '    "bestColors": ["хамгийн зохих 5 хувцасны өнгө — skinTone+undertone+seasonalColor ашиглан сонго"],',
   '    "avoidColors": ["арьсны өнгийг бүдгэрүүлэх 3-5 өнгө"],',
   '    "koreanStyle": {',
-  '      "styleName": "хамгийн тохирох Korean fashion style (Old Money Korean / Clean Fit Korean / Quiet Luxury Korean / K-Drama Smart Casual / K-Pop Street Fashion / Minimal Korean Aesthetic / Streetwear Oversized Korean / Business Casual Korean / Preppy Korean Style / Monochrome Korean Fit) өөр koreanStyle байж болно.",',
-  '      "description": "[МОНГОЛООР] яагаад тохирохыг тайлбарла",',
-  '      "tops": ["[МОНГОЛООР] дээд хувцасны 2 санал"],',
-  '      "bottoms": ["[МОНГОЛООР] доод хувцасны 2 санал"],',
-  '      "outerwear": ["[МОНГОЛООР] гадуур хувцасны 2 санал"]',
+  '      "styleName": "хамгийн тохирох Korean fashion style (Old Money Korean / Clean Fit Korean / Quiet Luxury Korean / K-Drama Smart Casual / K-Pop Street Fashion)",',
+  '      "description": "яагаад тохирохыг тайлбарла",',
+  '      "tops": ["дээд хувцасны 2 санал"],',
+  '      "bottoms": ["доод хувцасны 2 санал"],',
+  '      "outerwear": ["гадуур хувцасны 2 санал"]',
   '    }',
   '  },',
   '  "OUTFIT_RULE": "Warm undertone→cream,camel,olive,beige,chocolate,warm navy | Cool→charcoal,pure white,icy blue,emerald,cool grey | Neutral→muted navy,taupe,soft white,dusty blue. Хэзээ ч ерөнхий өнгө бүү санал болго.",',
@@ -106,7 +94,7 @@ const LOOKSMAX_PROMPT = [
   "undertone + seasonalColor: хэрэглэгчид ихэвчлэн мэддэггүй боловч стайлдаа маш чухал.",
 ].join("\n");
 
-/* ── Save DALL-E URL to Cloudinary (DALL-E URLs expire in ~1hr) ── */
+/* ── Save image URL to Cloudinary CDN ── */
 async function saveToCDN(imageUrl: string): Promise<string> {
   return new Promise((resolve, reject) => {
     cloudinary.uploader.upload(
@@ -133,9 +121,9 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
 
   try {
     const completion = await openai.chat.completions.create({
-      model:           "gpt-4o-mini",
-      temperature:     0.2,   // low = consistent results across repeated calls
-      seed:            42,    // fixed seed for reproducibility
+      model:       "gpt-4o-mini",
+      temperature: 0.2,   // consistent results across repeated calls
+      seed:        42,
       messages: [{
         role: "user",
         content: [
@@ -144,7 +132,7 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
         ],
       }],
       response_format: { type: "json_object" },
-      max_tokens:      4000,
+      max_tokens: 4000,
     });
 
     const content = completion.choices[0].message.content;
@@ -156,19 +144,13 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
     // Robust JSON parse — GPT sometimes wraps in markdown code blocks
     let analysis: Record<string, unknown>;
     try {
-      // Strip markdown code fences if present
       const clean = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
       analysis = JSON.parse(clean);
-    } catch (parseErr) {
-      console.error("[analyze/full] JSON parse error:", parseErr instanceof Error ? parseErr.message : parseErr);
-      console.error("[analyze/full] raw content (first 500):", content.slice(0, 500));
-
-      // Attempt to extract JSON object from anywhere in the string
+    } catch {
       const match = content.match(/\{[\s\S]*\}/);
       if (match) {
-        try {
-          analysis = JSON.parse(match[0]);
-        } catch {
+        try { analysis = JSON.parse(match[0]); }
+        catch {
           res.status(500).json({ error: "AI хариу буруу форматтай байна. Дахин оролдоно уу." });
           return;
         }
@@ -185,7 +167,7 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
       return;
     }
 
-    // Save analysis to DB — monthlyUsage increments only after generate-looks completes
+    // Save analysis to DB
     const saved = await Analysis.create({
       userId:   req.userId,
       photoUrl: url,
@@ -194,11 +176,11 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
       occasion: event,
     });
 
-    // Update user's lookScore (best ever, 0–100) — avatarUrl updated in generate-looks
-    const rawScore = typeof analysis.lookmaxScore === "number" ? analysis.lookmaxScore : 0;
-    // Convert 0–10 GPT score → 0–100 with 3 decimal precision (e.g. 7.4819 → 74.819)
-    const newScore = Math.round(rawScore * 10 * 1000) / 1000;
-    const existing = await User.findById(req.userId).select("lookScore").lean();
+    // ── Update lookScore (best ever, 0–100 scale) ──────────────
+    // GPT returns 0–10 → multiply × 10 → 0–100 with 3 decimal precision
+    const rawScore  = typeof analysis.lookmaxScore === "number" ? analysis.lookmaxScore : 0;
+    const newScore  = Math.round(rawScore * 10 * 1000) / 1000;   // e.g. 7.4819 → 74.819
+    const existing  = await User.findById(req.userId).select("lookScore").lean();
     const bestScore = Math.max(newScore, existing?.lookScore ?? 0);
     await User.findByIdAndUpdate(req.userId, { $set: { lookScore: bestScore } })
       .catch((e) => console.error("[analyze/full] lookScore update failed:", e?.message ?? e));
@@ -208,7 +190,6 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[analyze/full]", msg);
 
-    // Surface specific errors to frontend
     if (msg.includes("429") || msg.toLowerCase().includes("rate limit")) {
       res.status(429).json({ error: "AI хэт ачаалалтай байна. 1 минутын дараа дахин оролдоно уу." });
     } else if (msg.includes("timeout") || msg.includes("ETIMEDOUT")) {
@@ -219,15 +200,9 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
   }
 });
 
-/* ══ POST /analyze/generate-looks (FACE-PRESERVING) ═════════════
-   gpt-image-1 image editing — хэрэглэгчийн SELFIE-г input болгон авч
-   зөвхөн үс / хувцас өөрчилнө. Нүүр 100% хадгалагдана.
-
-   Body: {
-     imageUrl: string,            — original Cloudinary selfie URL
-     analysis: { faceShape, skinTone, hairRecommendations, outfitStyle },
-     occasion: string
-   }
+/* ══ POST /analyze/generate-looks ═══════════════════════════════
+   nano-banana-2/edit — original selfie input, only hair/outfit changes.
+   Face is preserved via the edit model's image conditioning.
 ══════════════════════════════════════════════════════════════════ */
 router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, res: Response) => {
   const { imageUrl, analysisId, analysis, occasion = "casual" } = req.body as {
@@ -235,9 +210,9 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
     analysisId?: string;
     analysis?: {
       gender?:             string;
-      faceShape:           string;
-      skinTone:            string;
-      lookmaxScore?:       number;
+      faceShape?:          string;
+      skinTone?:           string;
+      lookmaxScore?:       number;   // for lookScore sync
       hairRecommendations: Array<{ name: string; reason: string } | string>;
       outfitStyle:         { season?: string; bestColors?: string[]; koreanStyle?: { styleName?: string; description?: string; tops?: string[]; bottoms?: string[]; outerwear?: string[] } } | string;
       colorPalette?:       string[];
@@ -245,7 +220,7 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
     occasion?: string;
   };
 
-  if (!imageUrl || !analysis?.faceShape) {
+  if (!imageUrl || !analysis) {
     res.status(400).json({ error: "imageUrl болон analysis шаардлагатай" });
     return;
   }
@@ -260,7 +235,6 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
     if (existing?.generatingAt) {
       const elapsed = Date.now() - new Date(existing.generatingAt).getTime();
       if (elapsed < 5 * 60 * 1000) {
-        // Generation in progress (within 5 min) — tell client to wait & poll
         res.status(202).json({ status: "generating", message: "Зураг үүсгэж байна, түр хүлээнэ үү..." });
         return;
       }
@@ -269,159 +243,149 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
     await Analysis.findByIdAndUpdate(analysisId, { generatingAt: new Date() });
   }
 
-  const { gender = "female", faceShape, hairRecommendations = [], outfitStyle } = analysis;
+  const { gender = "female", hairRecommendations = [], outfitStyle } = analysis;
 
   const isMale    = gender?.toLowerCase() === "male";
   const personStr = isMale ? "young man" : "young woman";
 
-  // Normalise hairRecommendations → always array of strings
+  // Normalise hairRecommendations → array of name strings
   const hairNames: string[] = hairRecommendations.map((h) =>
     typeof h === "string" ? h : h.name
   );
 
-  // Normalise outfitStyle → extract readable string for prompt
+  // Normalise outfitStyle → readable English string for the image prompt
   let outfitDesc = "";
   if (typeof outfitStyle === "string") {
     outfitDesc = outfitStyle;
   } else if (outfitStyle) {
-    const ks = outfitStyle.koreanStyle;
+    const ks     = outfitStyle.koreanStyle;
     const colors = outfitStyle.bestColors?.join(", ") ?? "";
     outfitDesc = [
       ks?.styleName,
-      ks?.description,
       colors ? `Best colors: ${colors}` : "",
       ks?.tops?.join(", "),
       ks?.bottoms?.join(", "),
     ].filter(Boolean).join(". ");
   }
 
-  // Check user's plan
-  const user = await User.findById(req.userId);
-  const plan = user?.subscription?.plan ?? "basic";
-  const isPro = plan === "pro";
-  // Basic/Standard: 1 hair + 1 outfit = 2 images
-  // Pro:            2 hair + 2 outfit = 4 images
-
-  const items: { name: string; prompt: string }[] = [];
-
-  // Determine K-fashion aesthetic keywords from outfit analysis
-  const ksName    = (typeof outfitStyle === "object" ? outfitStyle?.koreanStyle?.styleName : "") || "";
+  // ── Vibe detection — 8 categories, priority: most specific first ──
+  const ksName   = (typeof outfitStyle === "object" ? outfitStyle?.koreanStyle?.styleName : "") || "";
   const bestColor = (typeof outfitStyle === "object" ? outfitStyle?.bestColors?.[0] : "") || "black";
-  const avoidNote = typeof outfitStyle === "object" && outfitStyle?.koreanStyle?.description ? outfitStyle.koreanStyle.description : "";
+  const combined  = (ksName + " " + occasion).toLowerCase();   // English only — avoids Mongolian false matches
 
-  // Match each Korean style name to its own category — checked in priority order (most specific first)
-  const combined   = (ksName + " " + occasion).toLowerCase();
-  const isOldMoney = combined.includes("old money") || combined.includes("quiet luxury") || combined.includes("formal") || occasion === "interview" || occasion === "wedding";
-  const isKdrama   = combined.includes("k-drama") || combined.includes("smart casual") || combined.includes("clean fit");
-  const isMinimal  = combined.includes("minimal") || combined.includes("monochrome");
+  const isOldMoney = combined.includes("old money")   || combined.includes("quiet luxury") || combined.includes("formal") || occasion === "interview" || occasion === "wedding";
+  const isKdrama   = combined.includes("k-drama")     || combined.includes("smart casual")  || combined.includes("clean fit");
+  const isMinimal  = combined.includes("minimal")     || combined.includes("monochrome");
   const isPreppy   = combined.includes("preppy");
   const isBusiness = combined.includes("business");
-  const isStreet   = combined.includes("streetwear") || combined.includes("oversized");  // "streetwear" not "street" — avoids matching "K-Pop Street Fashion"
-  const isKpop     = combined.includes("k-pop") || combined.includes("kpop") || combined.includes("idol");
-  const isY2K      = combined.includes("y2k") || combined.includes("urban");
+  const isStreet   = combined.includes("streetwear")  || combined.includes("oversized");   // "streetwear" not "street" — avoids matching "K-Pop Street Fashion"
+  const isKpop     = combined.includes("k-pop")       || combined.includes("kpop")         || combined.includes("idol");
+  const isY2K      = combined.includes("y2k")         || combined.includes("urban");
 
   const editorialStyle = isOldMoney
     ? "Old Money Korean editorial, quiet luxury aesthetic, tailored silhouette, premium fabrics, understated elegance, clean minimal pose"
     : isKdrama
     ? "K-Drama Smart Casual editorial, Korean drama lead character style, refined everyday look, clean modern pose"
     : isMinimal
-    ? "Minimal Korean editorial, clean lines, tonal monochrome dressing, negative space composition, effortlessly understated pose"
+    ? "Minimal Korean editorial, clean lines, tonal monochrome dressing, effortlessly understated pose"
     : isPreppy
-    ? "Preppy Korean editorial, collegiate aesthetic, layered knitwear, plaid accents, clean campus energy, polished confident pose"
+    ? "Preppy Korean editorial, collegiate aesthetic, layered knitwear, plaid accents, polished confident pose"
     : isBusiness
-    ? "Business Casual Korean editorial, smart professional look, tailored blazer, pressed trousers, modern office aesthetic, poised powerful pose"
+    ? "Business Casual Korean editorial, tailored blazer, pressed trousers, modern office aesthetic, poised powerful pose"
     : isStreet
-    ? "Korean Streetwear editorial, oversized silhouette, layered fits, bold accessories, urban streetwear energy, confident street stance"
+    ? "Korean Streetwear editorial, oversized silhouette, layered fits, bold accessories, confident street stance"
     : isKpop
-    ? "K-Pop idol fashion editorial, stage-ready outfit, bold statement pieces, idol energy, dynamic powerful model pose"
+    ? "K-Pop idol fashion editorial, stage-ready outfit, bold statement pieces, dynamic powerful model pose"
     : isY2K
-    ? "Y2K Korean street fashion editorial, bold Y2K energy, retro futuristic details, chain accessories, platform shoes, confident idol pose"
+    ? "Y2K Korean street fashion editorial, bold Y2K energy, chain accessories, platform shoes, confident idol pose"
     : "K-fashion editorial, premium Korean fashion magazine spread, confident model pose";
 
-  const outfitAesthetic = ksName || outfitDesc || `${bestColor} Korean fashion`;
   const vibe = isOldMoney
-    ? (isMale ? "Old Money Guy"          : "Old Money Vibes")
+    ? (isMale ? "Old Money Guy"         : "Old Money Vibes")
     : isKdrama
-    ? (isMale ? "K-Drama Lead"           : "K-Drama Heroine")
+    ? (isMale ? "K-Drama Lead"          : "K-Drama Heroine")
     : isMinimal
-    ? (isMale ? "Minimal Aesthetic Guy"  : "Minimal Aesthetic Vibes")
+    ? (isMale ? "Minimal Aesthetic Guy" : "Minimal Aesthetic Vibes")
     : isPreppy
-    ? (isMale ? "Preppy K-Guy"           : "Preppy K-Girl Vibes")
+    ? (isMale ? "Preppy K-Guy"          : "Preppy K-Girl Vibes")
     : isBusiness
-    ? (isMale ? "Business Casual Guy"    : "Business Casual Vibes")
+    ? (isMale ? "Business Casual Guy"   : "Business Casual Vibes")
     : isStreet
-    ? (isMale ? "Streetwear Guy Vibes"   : "Streetwear Girl Vibes")
+    ? (isMale ? "Streetwear Guy Vibes"  : "Streetwear Girl Vibes")
     : isKpop
-    ? (isMale ? "K-Pop It Guy Vibes"     : "K-Pop It Girl Vibes")
+    ? (isMale ? "K-Pop It Guy Vibes"    : "K-Pop It Girl Vibes")
     : isY2K
-    ? (isMale ? "Y2K Street Guy"         : "Y2K Street Vibes")
-    : (isMale ? "K-Pop It Guy Vibes"     : "K-Pop It Girl Vibes");
+    ? (isMale ? "Y2K Street Guy"        : "Y2K Street Vibes")
+    : (isMale ? "K-Pop It Guy Vibes"    : "K-Pop It Girl Vibes");
 
-  // Gender-specific moodboard labels & decorations
-  const isMaleGen  = isMale;
-  const decoColor  = isMaleGen ? "blue and black" : "pink and black";
-  const decoIcons  = isMaleGen ? "stars ★ lightning ⚡ crowns ♛" : "crowns ♛ hearts ♡ stars ★";
-  const beautyLbl  = isMaleGen ? "FACE FOCUS"    : "BEAUTY FOCUS";
-  const candLbl    = isMaleGen ? "COOL & RELAXED" : "CANDID / RELAXED";
-  const chibiLbl   = isMaleGen ? "CHIBI MASCOT"   : "CHIBI MASCOT";
-  const chibiStyle = isMaleGen
-    ? "cute chibi cartoon boy character same outfit same hair big eyes cool anime style"
-    : "cute chibi cartoon girl character same outfit same hair big eyes kawaii anime style";
+  const outfitAesthetic = outfitDesc || `${bestColor} Korean fashion, ${ksName || "K-pop street style"}`;
 
-  // Moodboard collage prompt — matches the reference image layout
-  const collage = (subject: string, label: string) =>
-    `K-pop fashion moodboard collage, white background, 5 panels: ` +
-    `top-left ${beautyLbl.toLowerCase()} close-up portrait, top-right back view or profile, ` +
-    `center full body main look (largest panel), bottom-left candid relaxed ${isMaleGen ? "seated" : "posed"} pose, ` +
-    `bottom-right ${chibiStyle}. ` +
-    `${subject}. ${editorialStyle}. ` +
-    `${decoColor} decorative accents: ${decoIcons} between panels. ` +
-    `Handwritten text labels: "${beautyLbl}" "BACK VIEW / PROFILE" "${candLbl}" "${chibiLbl}" "MAIN LOOK: ${label}". ` +
-    `Photorealistic panels + chibi anime. High quality, clean white layout.`;
+  // Check user plan (Basic: 2 images, Pro: 4 images)
+  const user  = await User.findById(req.userId);
+  const isPro = (user?.subscription?.plan ?? "basic") === "pro";
 
+  // ── Shared collage layout ─────────────────────────────────────
+  const collageLayout = `
+Layout: K-pop fashion moodboard collage on white background.
+CENTER (largest panel): full body portrait, main look.
+TOP-LEFT panel: close-up face portrait, beauty shot.
+TOP-RIGHT panel: back view or side profile.
+BOTTOM-LEFT panel: seated or relaxed candid pose.
+BOTTOM-RIGHT panel: cute chibi cartoon character version of the person, same outfit and hair, big eyes anime style.
+Decorative accents between panels: small hand-drawn stars ★, hearts ♡, crowns 👑 in pink and black ink doodle style.
+Small handwritten-style text labels: style notes, mood words.
+Overall aesthetic: Korean idol fashion moodboard, Y2K editorial magazine spread, pink & black color palette.`.trim();
+
+  const items: { name: string; prompt: string }[] = [];
+
+  // IMAGE 1 — Hair moodboard
   const topHair = hairNames[0];
   if (topHair) {
     items.push({
       name: topHair,
-      prompt: collage(
-        `Same ${personStr} with Korean ${topHair} hairstyle throughout all panels, same face`,
-        topHair.toUpperCase()
-      ),
+      prompt: `${collageLayout}
+SUBJECT: The same ${personStr} from the input photo — same face, same skin, same features. ONLY the hairstyle changes to Korean ${topHair}.
+All panels show the same ${personStr} with ${topHair} hair: center full body, top-left beauty close-up, top-right back view, bottom-left candid pose, bottom-right chibi figure.
+Studio quality lighting, ultra photorealistic main panels, 8K, Korean beauty magazine quality.`,
     });
   }
 
+  // IMAGE 2 — Outfit moodboard
   if (outfitDesc || outfitStyle) {
     items.push({
       name: "Outfit Look",
-      prompt: collage(
-        `Same ${personStr} wearing ${outfitAesthetic} throughout all panels, same face`,
-        vibe
-      ),
+      prompt: `${collageLayout}
+SUBJECT: The same ${personStr} from the input photo — same face, same features. ONLY clothing changes to: ${outfitAesthetic}.
+All panels show the same ${personStr} in this outfit: center full body confident pose, top-left face close-up, top-right back view showing outfit details, bottom-left seated relaxed pose, bottom-right chibi cartoon figure in same outfit.
+${editorialStyle}. Ultra photorealistic, 8K, Vogue Korea editorial quality. Vibe: ${vibe}.`,
     });
   }
 
+  // IMAGE 3 (Pro) — Second hair moodboard
   if (isPro && hairNames[1]) {
     items.push({
       name: hairNames[1],
-      prompt: collage(
-        `Same ${personStr} with Korean ${hairNames[1]} hairstyle throughout all panels, same face`,
-        hairNames[1].toUpperCase()
-      ),
+      prompt: `${collageLayout}
+SUBJECT: The same ${personStr} from the input photo — same face, same features. ONLY hairstyle changes to Korean ${hairNames[1]}.
+Golden hour outdoor version: warm backlight, soft bokeh background, natural skin texture.
+All panels with ${hairNames[1]} hair: center full body, top-left beauty close-up, top-right profile view, bottom-left candid pose, bottom-right chibi figure.
+Ultra photorealistic, 8K, K-drama lead character quality.`,
     });
   }
 
+  // IMAGE 4 (Pro) — Street outfit moodboard
   if (isPro && (outfitDesc || outfitStyle)) {
     items.push({
       name: "Street Look",
-      prompt: collage(
-        `Same ${personStr} wearing ${outfitAesthetic} street style throughout all panels, same face`,
-        "STREET LOOK"
-      ),
+      prompt: `${collageLayout}
+SUBJECT: The same ${personStr} from the input photo — same face, same features. Alternative ${outfitAesthetic} street look, different silhouette.
+Urban Korean street setting across panels: center full body walking pose, top-left face close-up, top-right back view, bottom-left sitting on steps pose, bottom-right chibi figure.
+Dynamic, confident, K-pop idol off-duty energy. Ultra photorealistic, 8K, editorial quality. Vibe: ${vibe}.`,
     });
   }
 
   try {
-    // Run ALL images in PARALLEL — much faster, 90s timeout each
+    // Run ALL images in PARALLEL — much faster than sequential
     const results = await Promise.allSettled(
       items.map(async (item) => {
         const falUrl      = await generateWithInstantID(imageUrl, item.prompt);
@@ -430,7 +394,7 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
       })
     );
 
-    // Keep successful results, log failures
+    // Collect successful results, log failures
     const looks: Array<{ name: string; imageUrl: string }> = [];
     for (const r of results) {
       if (r.status === "fulfilled") {
@@ -440,23 +404,23 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
       }
     }
 
-    if (looks.length === 0) {
-      throw new Error("Бүх зураг үүсгэхэд алдаа гарлаа");
-    }
+    if (looks.length === 0) throw new Error("Бүх зураг үүсгэхэд алдаа гарлаа");
 
+    // Save looks + clear generation lock
     if (analysisId) {
-      // Save looks + clear generation lock
       Analysis.findByIdAndUpdate(analysisId, { looks, generatingAt: null }).catch(() => {});
     }
 
-    // Update avatarUrl + lookScore in one write — this path is confirmed working
+    // ── Update avatarUrl + lookScore in one write ───────────────
+    // This path is confirmed working (avatarUrl was already saving here).
+    // lookScore is synced here as a reliable backup for the /full update.
     const firstLookUrl = looks[0]?.imageUrl;
     const userUpdate: Record<string, unknown> = {};
     if (firstLookUrl) userUpdate.avatarUrl = firstLookUrl;
 
     const rawScore = typeof analysis?.lookmaxScore === "number" ? analysis.lookmaxScore : 0;
     if (rawScore > 0) {
-      const newScore  = Math.round(rawScore * 10 * 1000) / 1000;
+      const newScore = Math.round(rawScore * 10 * 1000) / 1000;
       userUpdate.lookScore = Math.max(newScore, user?.lookScore ?? 0);
     }
 
@@ -473,7 +437,7 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
 
     res.json({ looks });
   } catch (err) {
-    // Clear generation lock on failure so user can retry
+    // Clear generation lock so user can retry
     if (analysisId) Analysis.findByIdAndUpdate(analysisId, { generatingAt: null }).catch(() => {});
     console.error("[analyze/generate-looks] FULL ERROR:", err);
     res.status(500).json({
@@ -485,7 +449,6 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
 
 /* ── GET /analyze/result/:id — public, no auth ───────────────────
    Used by the shareable results page to fetch analysis data.
-   Facebook/OG crawler calls this too.
 ─────────────────────────────────────────────────────────────────── */
 router.get("/result/:id", async (req: Request, res: Response) => {
   try {
