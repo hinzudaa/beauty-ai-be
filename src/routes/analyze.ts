@@ -55,9 +55,32 @@ const LOOKSMAX_PROMPT = [
   "",
   '  "makeupTips": "Энэ хүний нүүрний хэлбэр, онцлогт тохирсон 1–2 нүүр будалтын конкрет зөвлөгөө (жишээ: contour хаана хэрэглэх, ямар lip color тохирох)",',
   '  "hairRecommendations": [',
-  '    "Энэ хүний нүүрний хэлбэрт хамгийн тохирох 3 СОЛОНГОС үс засалтын нэр санал болго. K-pop болон K-drama загварт суурилсан, зөвхөн Korean hairstyle сонго. Үс засалтын нэрийг монгол болон англи хэлний хосолсон богино нэрээр бич. Жишээ: Two-block cut, Comma hair, Curtain bangs, Wolf cut, Hush cut, Leaf cut, Shadow perm, Air bangs, Korean Bob, Layered cut,',
+  '    "GENDER-ийг эхлээд тодорхойл.",',
+  '    "",',
+  '    "Хэрэв male бол зөвхөн эрэгтэй Korean hairstyle-аас сонго:",',
+  '    "Two Block Cut, Comma Hair, Shadow Perm, Down Perm, Leaf Cut, Ivy League Korean, Textured Crop Korean, Dandy Cut",',
+  '    "",',
+  '    "Хэрэв female бол зөвхөн эмэгтэй Korean hairstyle-аас сонго:",',
+  '    "Hush Cut, Korean Layered Cut, Air Bangs, See-through Bangs, Korean Bob, Long Wave Perm, C-Curl Perm, S-Curl Layered Hair",',
+  '    "",',
+  '    "Нүүрний хэлбэр, эрүү, хацрын бүтэцтэй хамгийн зохицох 3 үс засалтыг эрэмбэлэн буцаа.",',
+  '    "Зөвхөн Korean/K-Drama/K-Pop стиль ашигла.",',
+  '    "Үс засалт бүрийн яагаад тохирохыг 1 өгүүлбэрээр тайлбарла.",',
+  '    "Формат: { \\"name\\": \\"...\\" , \\"reason\\": \\"...\\" }"',
   '  ],',
-  '  "outfitStyle": "Undertone болон seasonal color-д үндэслэсэн хувцасны зөвлөмж — ямар өнгийн хослол хамгийн их гэрэлтүүлэх",',
+  '  "outfitStyle": {',
+  '    "season": "seasonalColor дээр үндэслэсэн улирлын төрөл",',
+  '    "bestColors": ["хамгийн зохих 5 хувцасны өнгө — skinTone+undertone+seasonalColor ашиглан сонго"],',
+  '    "avoidColors": ["арьсны өнгийг бүдгэрүүлэх 3-5 өнгө"],',
+  '    "koreanStyle": {',
+  '      "styleName": "хамгийн тохирох Korean fashion style (Old Money Korean / Clean Fit Korean / Quiet Luxury Korean / K-Drama Smart Casual / K-Pop Street Fashion)",',
+  '      "description": "яагаад тохирохыг тайлбарла",',
+  '      "tops": ["дээд хувцасны 2 санал"],',
+  '      "bottoms": ["доод хувцасны 2 санал"],',
+  '      "outerwear": ["гадуур хувцасны 2 санал"]',
+  '    }',
+  '  },',
+  '  "OUTFIT_RULE": "Warm undertone→cream,camel,olive,beige,chocolate,warm navy | Cool→charcoal,pure white,icy blue,emerald,cool grey | Neutral→muted navy,taupe,soft white,dusty blue. Хэзээ ч ерөнхий өнгө бүү санал болго.",',
   '  "colorPalette": ["#hex1", "#hex2", "#hex3", "#hex4", "#hex5"]',
   "  // colorPalette: зургаас шууд харж тодорхойлсон ЯГГҮЙ 5 өнгө —",
   "  // 1-р өнгө: арьсны бодит hex өнгө (зургаас пиксел унших),",
@@ -149,8 +172,8 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
       gender?:             string;
       faceShape:           string;
       skinTone:            string;
-      hairRecommendations: string[];
-      outfitStyle:         string;
+      hairRecommendations: Array<{ name: string; reason: string } | string>;
+      outfitStyle:         { season?: string; bestColors?: string[]; koreanStyle?: { styleName?: string; description?: string; tops?: string[]; bottoms?: string[]; outerwear?: string[] } } | string;
       colorPalette?:       string[];
     };
     occasion?: string;
@@ -161,34 +184,43 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
     return;
   }
 
-  const {
-    gender = "female",
-    faceShape,
-    hairRecommendations = [],
-    outfitStyle = "",
-  } = analysis;
+  const { gender = "female", faceShape, hairRecommendations = [], outfitStyle } = analysis;
 
   const isMale    = gender?.toLowerCase() === "male";
   const personStr = isMale ? "young man" : "young woman";
 
+  // Normalise hairRecommendations → always array of strings
+  const hairNames: string[] = hairRecommendations.map((h) =>
+    typeof h === "string" ? h : h.name
+  );
+
+  // Normalise outfitStyle → extract readable string for prompt
+  let outfitDesc = "";
+  if (typeof outfitStyle === "string") {
+    outfitDesc = outfitStyle;
+  } else if (outfitStyle) {
+    const ks = outfitStyle.koreanStyle;
+    const colors = outfitStyle.bestColors?.join(", ") ?? "";
+    outfitDesc = [
+      ks?.styleName,
+      ks?.description,
+      colors ? `Best colors: ${colors}` : "",
+      ks?.tops?.join(", "),
+      ks?.bottoms?.join(", "),
+    ].filter(Boolean).join(". ");
+  }
+
   // Check user's plan
   const user = await User.findById(req.userId);
   const plan = user?.subscription?.plan ?? "basic";
-  const isPro       = plan === "pro";
-  const isStandard  = plan === "standard";
-  // Basic: 1 hair + 1 outfit = 2 images
-  // Standard: 1 hair + 1 outfit = 2 images
-  // Pro: 2 hair + 1 outfit + 1 outfit2 = 4 images
+  const isPro = plan === "pro";
+  // Basic/Standard: 1 hair + 1 outfit = 2 images
+  // Pro:            2 hair + 2 outfit = 4 images
 
-  // ── STRICT RULES FOR ALL PROMPTS ──────────────────────────────
-  // ✗ NEVER mention colorPalette, hex codes, or skin tone — these cause color leaking
-  // ✓ ONLY describe what to CHANGE: hairstyle OR outfit
-  // ✓ InstantID reads the face/skin directly from the input image — do not override it
-  // ─────────────────────────────────────────────────────────────
   const items: { name: string; prompt: string }[] = [];
 
-  // IMAGE 1 — Hairstyle: cinematic close-up portrait, face is the focus
-  const topHair = hairRecommendations[0];
+  // IMAGE 1 — Hairstyle
+  const topHair = hairNames[0];
   if (topHair) {
     items.push({
       name: topHair,
@@ -196,40 +228,30 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
     });
   }
 
-  // Determine outfit aesthetic — shared across both outfit prompts
-  const combined        = (outfitStyle + " " + occasion).toLowerCase();
-  const oldMoneyWords   = ["хар", "саарал", "navy", "classic", "formal", "tailored", "blazer", "elegant", "ёслол", "хурим", "ажлын", "хуяг", "дунд оны"];
-  const luxuryWords     = ["casual", "street", "urban", "modern", "trendy", "өдөр тутам", "энгийн", "party", "sport", "хийморь"];
-  const formalOccasions = ["interview", "wedding", "formal", "ёслол"];
-  const matchesOld      = oldMoneyWords.some((k) => combined.includes(k)) || formalOccasions.some((k) => combined.includes(k));
-  const matchesLuxury   = luxuryWords.some((k) => combined.includes(k));
-  const outfitAesthetic = (matchesOld && !matchesLuxury)
-    ? "old money aesthetic, timeless quiet luxury, understated elegance, minimal refined style"
-    : "luxury lifestyle photography, modern premium fashion, elevated contemporary style";
+  // Outfit aesthetic from AI analysis
+  const outfitAesthetic = outfitDesc || "Korean clean fit, modern premium fashion, elevated contemporary style";
 
   // IMAGE 2 — Outfit
-  if (outfitStyle) {
-    const aesthetic = outfitAesthetic;
-
+  if (outfitDesc || outfitStyle) {
     items.push({
       name: "Outfit Look",
-      prompt: `The same ${personStr} from the input photo wearing ${outfitStyle} for ${occasion}. Only the clothing changes — same face, same features. Athletic symmetrical body, confident posture. ${aesthetic}. Natural soft daylight, cinematic color grade, fashion editorial style, realistic skin texture, shallow depth of field. Full body shot, centered composition, 85mm lens f/2.0, ultra photorealistic, professional fashion shoot, high detail, elegant urban atmosphere, 8K, masterpiece.`,
+      prompt: `The same ${personStr} from the input photo wearing a ${outfitAesthetic} outfit for ${occasion}. Only the clothing changes — same face, same features. Athletic symmetrical body, confident posture. Natural soft daylight, cinematic color grade, fashion editorial style, realistic skin texture, shallow depth of field. Full body shot, centered composition, 85mm lens f/2.0, ultra photorealistic, professional fashion shoot, 8K, masterpiece.`,
     });
   }
 
   // Pro image 3: second hair variation
-  if (isPro && hairRecommendations[1]) {
+  if (isPro && hairNames[1]) {
     items.push({
-      name: hairRecommendations[1],
-      prompt: `The same ${personStr} from the input photo with a Korean ${hairRecommendations[1]} hairstyle. K-drama style hair, perfectly styled. Close-up portrait focused on face and hair. Same face, same skin — only the hairstyle changes. Soft studio lighting, natural skin texture, sharp eyes, cinematic color grade, shallow depth of field. Ultra realistic, photorealistic, 8K, masterpiece portrait photography.`,
+      name: hairNames[1],
+      prompt: `The same ${personStr} from the input photo with a Korean ${hairNames[1]} hairstyle. K-drama style hair, perfectly styled. Close-up portrait focused on face and hair. Same face, same skin — only the hairstyle changes. Soft studio lighting, natural skin texture, sharp eyes, cinematic color grade, shallow depth of field. Ultra realistic, photorealistic, 8K, masterpiece portrait photography.`,
     });
   }
 
   // Pro image 4: second outfit variation
-  if (isPro && outfitStyle) {
+  if (isPro && (outfitDesc || outfitStyle)) {
     items.push({
       name: "Outfit Look 2",
-      prompt: `The same ${personStr} from the input photo wearing an alternative ${outfitStyle} look for ${occasion} with a different silhouette. Only the clothing changes. Athletic symmetrical body. ${outfitAesthetic}. Natural soft daylight, cinematic color grade, full body shot, centered, 85mm lens f/2.0, ultra photorealistic, 8K, masterpiece fashion editorial.`,
+      prompt: `The same ${personStr} from the input photo wearing an alternative ${outfitAesthetic} look for ${occasion} with a different silhouette. Only clothing changes. Athletic symmetrical body. Natural soft daylight, cinematic color grade, full body shot, 85mm lens f/2.0, ultra photorealistic, 8K, masterpiece fashion editorial.`,
     });
   }
   // Pro total: 4 images (2 hair + 2 outfit)
