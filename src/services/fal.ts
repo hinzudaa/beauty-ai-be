@@ -9,11 +9,11 @@ fal.config({ credentials: config.fal.key });
  * @param faceImageUrl  Cloudinary URL of the original selfie
  * @param prompt        What to change (hairstyle / outfit)
  */
-const FAL_TIMEOUT_MS = 90_000; // 90s max per image — fal.subscribe can hang forever
+const FAL_TIMEOUT_MS = 120_000; // 2 min
 
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(`[fal] ${label} timed out after ${ms / 1000}s`)), ms);
+    const t = setTimeout(() => reject(new Error(`fal.ai timed out after ${ms / 1000}s`)), ms);
     promise.then((v) => { clearTimeout(t); resolve(v); }).catch((e) => { clearTimeout(t); reject(e); });
   });
 }
@@ -23,20 +23,19 @@ export async function generateWithInstantID(
   prompt:       string
 ): Promise<string> {
   const result = await withTimeout(
-    fal.subscribe("fal-ai/nano-banana-2/edit", {
+    fal.subscribe("xai/grok-imagine-image/quality/edit", {
       input: {
-        image_urls: [faceImageUrl],
+        image_url: faceImageUrl,
         prompt,
       },
       logs: false,
     }),
-    FAL_TIMEOUT_MS,
-    "nano-banana-2/edit"
+    FAL_TIMEOUT_MS
   );
 
   if (process.env.NODE_ENV !== "production") {
-    console.log("[fal/nano-banana-2] requestId:", result.requestId);
-    console.log("[fal/nano-banana-2] data keys:", Object.keys(result.data ?? {}));
+    console.log("[fal/grok-imagine] requestId:", result.requestId);
+    console.log("[fal/grok-imagine] data keys:", Object.keys(result.data ?? {}));
   }
 
   const data = result.data as Record<string, unknown>;
@@ -47,8 +46,8 @@ export async function generateWithInstantID(
     ?? (data?.["url"]    as string | undefined);
 
   if (!url) {
-    console.error("[fal/nano-banana-2] unexpected data:", JSON.stringify(result.data).slice(0, 400));
-    throw new Error(`nano-banana-2 returned no image. data: ${JSON.stringify(result.data).slice(0, 200)}`);
+    console.error("[fal/grok-imagine] unexpected data:", JSON.stringify(result.data).slice(0, 400));
+    throw new Error(`grok-imagine returned no image. data: ${JSON.stringify(result.data).slice(0, 200)}`);
   }
 
   return url;
