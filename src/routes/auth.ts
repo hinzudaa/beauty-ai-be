@@ -97,63 +97,82 @@ router.post("/start", async (req: Request, res: Response) => {
 });
 
 router.post("/verify", async (req: Request, res: Response) => {
-  const { sessionId } = req.body as { sessionId?: string };
-
-  if (!sessionId) {
-    res.status(400).json({ error: "sessionId шаардлагатай" });
-    return;
-  }
-
-  const stored = await OtpSession.findOne({ sessionId });
-  if (!stored) {
-    res.status(404).json({ error: "Session олдсонгүй эсвэл хугацаа дууссан" });
-    return;
-  }
-
-  if (new Date() > stored.expiresAt) {
-    res.status(410).json({ error: "OTP хугацаа дууссан. Дахин оролдоно уу." });
-    return;
-  }
-
-  if (config.verifyMn.devBypass && sessionId.startsWith("dev_")) {
-    await OtpSession.deleteOne({ sessionId });
-    const user  = await findOrCreateUser(stored.phone);
-    const token = signToken(String(user._id));
-    return res.json({ token, user: userPayload(user) });
-  }
-
-  if (stored.verified) {
-    await OtpSession.deleteOne({ sessionId });
-    const user  = await findOrCreateUser(stored.phone);
-    const token = signToken(String(user._id));
-    return res.json({ token, user: userPayload(user) });
-  }
-
   try {
-    const status = await checkSession(sessionId);
+    const { sessionId } = req.body as { sessionId?: string };
 
-    if (status.sessionStatus === "EXPIRED") {
-      await OtpSession.deleteOne({ sessionId });
+    if (!sessionId) {
+      res.status(400).json({ error: "sessionId шаардлагатай" });
+      return;
+    }
+
+    const stored = await OtpSession.findOne({ sessionId });
+    if (!stored) {
+      res.status(202).json({ status: "PENDING" });  // lost race or not yet stored — keep polling
+      return;
+    }
+
+    if (new Date() > stored.expiresAt) {
+      await OtpSession.deleteOne({ sessionId }).catch(() => {});
       res.status(410).json({ error: "OTP хугацаа дууссан. Дахин оролдоно уу." });
       return;
     }
 
-    if (status.sessionStatus !== "VERIFIED") {
-      res.status(202).json({ status: "PENDING" });
-      return;
+    // Dev bypass
+    if (config.verifyMn.devBypass && sessionId.startsWith("dev_")) {
+      const claimed = await OtpSession.findOneAndDelete({ sessionId });
+      if (!claimed) { res.status(202).json({ status: "PENDING" }); return; }
+      const user  = await findOrCreateUser(claimed.phone);
+      const token = signToken(String(user._id));
+      return res.json({ token, user: userPayload(user) });
     }
 
-    await OtpSession.deleteOne({ sessionId });
-    const user  = await findOrCreateUser(stored.phone);
-    const token = signToken(String(user._id));
-    res.json({ token, user: userPayload(user) });
-  } catch (err: unknown) {
-    if (err instanceof HttpError && err.statusCode === 401) {
-      res.status(401).json({ error: "API key алдаатай" });
-      return;
+    // Already verified by callback — atomic claim to avoid race condition
+    if (stored.verified) {
+      const claimed = await OtpSession.findOneAndDelete({ sessionId, verified: true });
+      if (!claimed) {
+        // Another concurrent request already claimed it — return PENDING, next poll will have the token
+        res.status(202).json({ status: "PENDING" });
+        return;
+      }
+      const user  = await findOrCreateUser(claimed.phone);
+      const token = signToken(String(user._id));
+      return res.json({ token, user: userPayload(user) });
     }
-    console.error("[verify] checkSession error:", err instanceof Error ? err.message : err);
-    res.status(202).json({ status: "PENDING" });
+
+    // Not yet verified by callback — check verify.mn directly
+    try {
+      const status = await checkSession(sessionId);
+
+      if (status.sessionStatus === "EXPIRED") {
+        await OtpSession.deleteOne({ sessionId }).catch(() => {});
+        res.status(410).json({ error: "OTP хугацаа дууссан. Дахин оролдоно уу." });
+        return;
+      }
+
+      if (status.sessionStatus !== "VERIFIED") {
+        res.status(202).json({ status: "PENDING" });
+        return;
+      }
+
+      // Atomic claim
+      const claimed = await OtpSession.findOneAndDelete({ sessionId });
+      if (!claimed) { res.status(202).json({ status: "PENDING" }); return; }
+      const user  = await findOrCreateUser(claimed.phone);
+      const token = signToken(String(user._id));
+      res.json({ token, user: userPayload(user) });
+
+    } catch (err: unknown) {
+      if (err instanceof HttpError && err.statusCode === 401) {
+        res.status(401).json({ error: "API key алдаатай" });
+        return;
+      }
+      console.error("[verify] checkSession error:", err instanceof Error ? err.message : err);
+      res.status(202).json({ status: "PENDING" });
+    }
+
+  } catch (err) {
+    console.error("[verify] unexpected error:", err instanceof Error ? err.message : err);
+    res.status(202).json({ status: "PENDING" });  // never 500 — keep polling
   }
 });
 
