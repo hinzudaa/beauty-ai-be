@@ -130,13 +130,46 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
         ],
       }],
       response_format: { type: "json_object" },
-      max_tokens: 1000,
+      max_tokens: 4000,   // hairRecommendations×10 + outfitStyle object needs ~2500+ tokens
     });
 
     const content = completion.choices[0].message.content;
-    if (!content) { res.status(500).json({ error: "AI хариу буцааж ирсэнгүй" }); return; }
+    if (!content) {
+      res.status(500).json({ error: "AI хариу буцааж ирсэнгүй" });
+      return;
+    }
 
-    const analysis = JSON.parse(content);
+    // Robust JSON parse — GPT sometimes wraps in markdown code blocks
+    let analysis: Record<string, unknown>;
+    try {
+      // Strip markdown code fences if present
+      const clean = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+      analysis = JSON.parse(clean);
+    } catch (parseErr) {
+      console.error("[analyze/full] JSON parse error:", parseErr instanceof Error ? parseErr.message : parseErr);
+      console.error("[analyze/full] raw content (first 500):", content.slice(0, 500));
+
+      // Attempt to extract JSON object from anywhere in the string
+      const match = content.match(/\{[\s\S]*\}/);
+      if (match) {
+        try {
+          analysis = JSON.parse(match[0]);
+        } catch {
+          res.status(500).json({ error: "AI хариу буруу форматтай байна. Дахин оролдоно уу." });
+          return;
+        }
+      } else {
+        res.status(500).json({ error: "AI хариу буруу форматтай байна. Дахин оролдоно уу." });
+        return;
+      }
+    }
+
+    // Validate minimum required fields
+    if (!analysis.faceShape && !analysis.lookmaxScore) {
+      console.error("[analyze/full] missing required fields:", Object.keys(analysis));
+      res.status(500).json({ error: "AI дутуу хариу өгсөн байна. Дахин оролдоно уу." });
+      return;
+    }
 
     // Save analysis to DB — monthlyUsage increments only after generate-looks completes
     const saved = await Analysis.create({
@@ -149,8 +182,17 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
 
     res.json({ analysis, occasion: event, analysisId: String(saved._id) });
   } catch (err) {
-    console.error("[analyze/full]", err instanceof Error ? err.message : err);
-    res.status(500).json({ error: "Шинжилгээ хийхэд алдаа гарлаа" });
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[analyze/full]", msg);
+
+    // Surface specific errors to frontend
+    if (msg.includes("429") || msg.toLowerCase().includes("rate limit")) {
+      res.status(429).json({ error: "AI хэт ачаалалтай байна. 1 минутын дараа дахин оролдоно уу." });
+    } else if (msg.includes("timeout") || msg.includes("ETIMEDOUT")) {
+      res.status(504).json({ error: "AI хариу удааширлаа. Дахин оролдоно уу." });
+    } else {
+      res.status(500).json({ error: "Шинжилгээ хийхэд алдаа гарлаа. Дахин оролдоно уу." });
+    }
   }
 });
 
