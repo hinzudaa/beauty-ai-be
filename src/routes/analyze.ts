@@ -233,6 +233,25 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
     return;
   }
 
+  // ── Idempotency + generation lock ────────────────────────────
+  if (analysisId) {
+    const existing = await Analysis.findById(analysisId).select("looks generatingAt").lean();
+    if (existing?.looks && existing.looks.length > 0) {
+      res.json({ looks: existing.looks });   // already done — return cached
+      return;
+    }
+    if (existing?.generatingAt) {
+      const elapsed = Date.now() - new Date(existing.generatingAt).getTime();
+      if (elapsed < 5 * 60 * 1000) {
+        // Generation in progress (within 5 min) — tell client to wait & poll
+        res.status(202).json({ status: "generating", message: "Зураг үүсгэж байна, түр хүлээнэ үү..." });
+        return;
+      }
+    }
+    // Set lock before starting
+    await Analysis.findByIdAndUpdate(analysisId, { generatingAt: new Date() });
+  }
+
   const { gender = "female", faceShape, hairRecommendations = [], outfitStyle } = analysis;
 
   const isMale    = gender?.toLowerCase() === "male";
@@ -376,7 +395,8 @@ Dynamic, confident, K-pop idol off-duty energy. Ultra photorealistic, 8K, editor
     }
 
     if (analysisId) {
-      Analysis.findByIdAndUpdate(analysisId, { looks }).catch(() => {});
+      // Save looks + clear generation lock
+      Analysis.findByIdAndUpdate(analysisId, { looks, generatingAt: null }).catch(() => {});
     }
 
     // Save first generated look as avatarUrl for leaderboard
@@ -393,7 +413,8 @@ Dynamic, confident, K-pop idol off-duty energy. Ultra photorealistic, 8K, editor
 
     res.json({ looks });
   } catch (err) {
-    // Log the full error so we can debug
+    // Clear generation lock on failure so user can retry
+    if (analysisId) Analysis.findByIdAndUpdate(analysisId, { generatingAt: null }).catch(() => {});
     console.error("[analyze/generate-looks] FULL ERROR:", err);
     res.status(500).json({
       error: "Look зураг үүсгэхэд алдаа гарлаа",
