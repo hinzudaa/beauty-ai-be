@@ -62,7 +62,7 @@ router.post("/start", async (req: Request, res: Response) => {
   try {
     const callbackToken = randomUUID();
     const callbackUrl   = config.appBaseUrl
-      ? `${config.appBaseUrl}/verify/callback/${callbackToken}`
+      ? `${config.appBaseUrl}/auth/callback/${callbackToken}`
       : undefined;
 
     const session = await createSession(phone, callbackUrl);
