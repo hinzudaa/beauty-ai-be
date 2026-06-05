@@ -68,7 +68,10 @@ export async function createSession(
 
 export async function checkSession(sessionId: string): Promise<GetSessionResponse> {
   return http<GetSessionResponse>(
-    `${config.verifyMn.baseUrl}/sessions/${encodeURIComponent(sessionId)}`
+    `${config.verifyMn.baseUrl}/sessions/${encodeURIComponent(sessionId)}`,
+    {
+      headers: { Authorization: `Bearer ${config.verifyMn.apiKey}` },
+    }
   );
 }
 
