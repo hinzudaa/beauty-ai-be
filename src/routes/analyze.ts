@@ -157,6 +157,14 @@ router.post("/full", requireAuth, requireAccess, async (req: Request, res: Respo
       occasion: event,
     });
 
+    // ── lookScore update (best ever, 0–100 scale) ──────────────
+    const rawScore  = typeof analysis.lookmaxScore === "number" ? analysis.lookmaxScore : 0;
+    const newScore  = Math.round(rawScore * 10 * 1000) / 1000;  // 7.4823 → 74.823
+    const existing  = await User.findById(req.userId).select("lookScore").lean();
+    const bestScore = Math.max(newScore, existing?.lookScore ?? 0);
+    await User.findByIdAndUpdate(req.userId, { $set: { lookScore: bestScore } })
+      .catch((e) => console.error("[analyze/full] lookScore update failed:", e?.message ?? e));
+
     res.json({ analysis, occasion: event, analysisId: String(saved._id) });
   } catch (err) {
     console.error("[analyze/full]", err instanceof Error ? err.message : err);
@@ -182,6 +190,7 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
       gender?:             string;
       faceShape:           string;
       skinTone:            string;
+      lookmaxScore?:       number;
       hairRecommendations: Array<{ name: string; reason: string } | string>;
       outfitStyle:         { season?: string; bestColors?: string[]; koreanStyle?: { styleName?: string; description?: string; tops?: string[]; bottoms?: string[]; outerwear?: string[] } } | string;
       colorPalette?:       string[];
@@ -328,6 +337,22 @@ Dynamic, confident, K-pop idol off-duty energy. Ultra photorealistic, 8K, editor
 
     if (analysisId) {
       Analysis.findByIdAndUpdate(analysisId, { looks }).catch(() => {});
+    }
+
+    // ── avatarUrl + lookScore — одон write-д ──────────────────
+    const firstLookUrl = looks[0]?.imageUrl;
+    const userUpdate: Record<string, unknown> = {};
+    if (firstLookUrl) userUpdate.avatarUrl = firstLookUrl;
+
+    const rawScore = typeof analysis?.lookmaxScore === "number" ? analysis.lookmaxScore : 0;
+    if (rawScore > 0) {
+      const newScore = Math.round(rawScore * 10 * 1000) / 1000;
+      userUpdate.lookScore = Math.max(newScore, user?.lookScore ?? 0);
+    }
+
+    if (Object.keys(userUpdate).length > 0) {
+      User.findByIdAndUpdate(req.userId, userUpdate)
+        .catch((e) => console.error("[generate-looks] user update failed:", e?.message ?? e));
     }
 
     // Increment monthlyUsage only after looks are successfully generated
