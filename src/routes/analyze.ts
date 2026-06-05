@@ -26,12 +26,12 @@ const LOOKSMAX_PROMPT = [
   "ОНОО ТООЦООЛОХ ЗААВАР (заавал дагах):",
   "  - Хүн амын дундаж = 5.0",
   "  - 1–4: дундаас доош (30%), 4–6: дундаж (40%), 6–8: дэвшилтэт (25%), 8–10: ховор (5%)",
-  "  - Оноо 0.5 нарийвчлалтай. Нүүрний тэгш хэм, алтан пропорц, арьс, нас харгалз.",
+  "  - Оноо 0.01 нарийвчлалтай (жишээ: 6.73, 7.42). Нүүрний тэгш хэм, алтан пропорц, арьс, нас харгалз.",
   "",
   "{",
   '  "gender": "Зургаас харж тодорхойлсон хүйс: male эсвэл female",',
   '  "faceShape": "Нүүрний хэлбэрийг зургаас шууд шинжлэн тайлбарла — урьдчилан тодорхойлсон ангилалгүйгээр. Нүүрний өргөн/урт харьцаа, эрүүний шугам, хацрын өндрийг харьцуулж яггүй тодорхойлол. Жишээ: уртавтар нарийхан нүүр, доошоо нарийссан зүрх хэлбэртэй, дугуйвтар дэлгэр нүүр гэх мэт.",',
-  '  "lookmaxScore": 5.5,',
+  '  "lookmaxScore": 5.73,',
   "",
   '  "features": {',
   '    "eyes":    "Нүдний хэлбэр, өнгө, тэгш хэм — хүмүүс өөрсдөө анзаардаггүй онцлог (жишээ: hooded eyelid, heterochromia, limbal ring гэх мэт)",',
@@ -306,69 +306,38 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
     ? "K-Drama Smart Casual editorial, Korean drama lead character style, refined everyday look, clean modern pose"
     : "K-Pop idol fashion editorial, premium Korean fashion magazine spread, confident model pose";
 
-  // Shared collage layout instruction
-  const collageLayout = `
-Layout: K-pop fashion moodboard collage on white background.
-CENTER (largest panel): full body portrait, main look.
-TOP-LEFT panel: close-up face portrait, beauty shot.
-TOP-RIGHT panel: back view or side profile.
-BOTTOM-LEFT panel: seated or relaxed candid pose.
-BOTTOM-RIGHT panel: cute chibi cartoon character version of the person, same outfit and hair, big eyes anime style.
-Decorative accents between panels: small hand-drawn stars ★, hearts ♡, crowns 👑 in pink and black ink doodle style.
-Small handwritten-style text labels: style notes, mood words.
-Overall aesthetic: Korean idol fashion moodboard, Y2K editorial magazine spread, pink & black color palette.`.trim();
+  const outfitAesthetic = ksName || outfitDesc || `${bestColor} Korean fashion`;
+  const style = isOldMoney ? "elegant quiet luxury" : isY2K ? "Y2K street" : "K-drama smart casual";
 
-  // IMAGE 1 — Hair moodboard collage
+  // Short, high-quality prompts — nano-banana processes faster with concise text
   const topHair = hairNames[0];
   if (topHair) {
     items.push({
       name: topHair,
-      prompt: `${collageLayout}
-SUBJECT: The same ${personStr} from the input photo — same face, same skin, same features. ONLY the hairstyle changes to Korean ${topHair}.
-All panels show the same ${personStr} with ${topHair} hair: center full body, top-left beauty close-up, top-right back view, bottom-left candid pose, bottom-right chibi figure.
-Studio quality lighting, ultra photorealistic main panels, 8K, Korean beauty magazine quality.`,
+      prompt: `${personStr} with ${topHair} hairstyle. Same face. K-beauty portrait, soft studio light, high quality.`,
     });
   }
 
-  // Outfit aesthetic string for prompt
-  const outfitAesthetic = outfitDesc
-    || `${bestColor} Korean fashion, ${ksName || "K-pop street style"}`;
-
-  // IMAGE 2 — Outfit moodboard collage
   if (outfitDesc || outfitStyle) {
     items.push({
       name: "Outfit Look",
-      prompt: `${collageLayout}
-SUBJECT: The same ${personStr} from the input photo — same face, same features. ONLY clothing changes to: ${outfitAesthetic}.
-${avoidNote ? avoidNote + "." : ""}
-All panels show the same ${personStr} in this outfit: center full body confident pose, top-left face close-up, top-right back view showing outfit details, bottom-left seated relaxed pose, bottom-right chibi cartoon figure in same outfit.
-${editorialStyle}. Ultra photorealistic, 8K, Vogue Korea editorial quality.`,
+      prompt: `${personStr} wearing ${outfitAesthetic}, ${style} style. Same face. Full body, clean background, high quality.`,
     });
   }
 
-  // Pro image 3: second hair moodboard
   if (isPro && hairNames[1]) {
     items.push({
       name: hairNames[1],
-      prompt: `${collageLayout}
-SUBJECT: The same ${personStr} from the input photo — same face, same features. ONLY hairstyle changes to Korean ${hairNames[1]}.
-Golden hour outdoor version: warm backlight, soft bokeh background, natural skin texture.
-All panels with ${hairNames[1]} hair: center full body, top-left beauty close-up, top-right profile view, bottom-left candid pose, bottom-right chibi figure.
-Ultra photorealistic, 8K, K-drama lead character quality.`,
+      prompt: `${personStr} with ${hairNames[1]} hairstyle. Same face. Golden hour portrait, high quality.`,
     });
   }
 
-  // Pro image 4: second outfit moodboard — street style
   if (isPro && (outfitDesc || outfitStyle)) {
     items.push({
       name: "Street Look",
-      prompt: `${collageLayout}
-SUBJECT: The same ${personStr} from the input photo — same face, same features. Alternative ${outfitAesthetic} street look, different silhouette.
-Urban Korean street setting across panels: center full body walking pose, top-left face close-up, top-right back view, bottom-left sitting on steps pose, bottom-right chibi figure.
-Dynamic, confident, K-pop idol off-duty energy. Ultra photorealistic, 8K, editorial quality.`,
+      prompt: `${personStr} wearing ${outfitAesthetic} street outfit. Same face. Urban setting, full body, high quality.`,
     });
   }
-  // Pro total: 4 moodboard collage images
 
   try {
     // Run ALL images in PARALLEL — much faster, 90s timeout each
