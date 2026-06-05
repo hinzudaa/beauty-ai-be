@@ -237,6 +237,7 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
       gender?:             string;
       faceShape:           string;
       skinTone:            string;
+      lookmaxScore?:       number;
       hairRecommendations: Array<{ name: string; reason: string } | string>;
       outfitStyle:         { season?: string; bestColors?: string[]; koreanStyle?: { styleName?: string; description?: string; tops?: string[]; bottoms?: string[]; outerwear?: string[] } } | string;
       colorPalette?:       string[];
@@ -448,10 +449,20 @@ router.post("/generate-looks", requireAuth, requireAccess, async (req: Request, 
       Analysis.findByIdAndUpdate(analysisId, { looks, generatingAt: null }).catch(() => {});
     }
 
-    // Save first generated look as avatarUrl for leaderboard
+    // Update avatarUrl + lookScore in one write — this path is confirmed working
     const firstLookUrl = looks[0]?.imageUrl;
-    if (firstLookUrl) {
-      User.findByIdAndUpdate(req.userId, { avatarUrl: firstLookUrl }).catch(() => {});
+    const userUpdate: Record<string, unknown> = {};
+    if (firstLookUrl) userUpdate.avatarUrl = firstLookUrl;
+
+    const rawScore = typeof analysis?.lookmaxScore === "number" ? analysis.lookmaxScore : 0;
+    if (rawScore > 0) {
+      const newScore  = Math.round(rawScore * 10 * 1000) / 1000;
+      userUpdate.lookScore = Math.max(newScore, user?.lookScore ?? 0);
+    }
+
+    if (Object.keys(userUpdate).length > 0) {
+      User.findByIdAndUpdate(req.userId, userUpdate)
+        .catch((e) => console.error("[generate-looks] user update failed:", e?.message ?? e));
     }
 
     // Increment monthlyUsage only after looks are successfully generated
