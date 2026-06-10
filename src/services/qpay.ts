@@ -51,7 +51,7 @@ async function getToken(): Promise<string> {
   const data = (await res.json()) as { access_token: string; expires_in: number };
   cachedToken = {
     access_token: data.access_token,
-    expires_at: Date.now() + (data.expires_in - 30) * 1000,
+    expires_at: (data.expires_in - 30) * 1000, // QPay returns absolute Unix timestamp, not duration
   };
 
   return cachedToken.access_token;
